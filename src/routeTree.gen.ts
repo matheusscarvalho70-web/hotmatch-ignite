@@ -11,6 +11,8 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as FeedRouteImport } from './routes/feed'
+import { Route as LojaRouteImport } from './routes/loja'
+import { Route as PerfilRouteImport } from './routes/perfil'
 import { Route as MensagensIndexRouteImport } from './routes/mensagens.index'
 import { Route as MensagensChatIdRouteImport } from './routes/mensagens.$chatId'
 
@@ -22,6 +24,16 @@ const IndexRoute = IndexRouteImport.update({
 const FeedRoute = FeedRouteImport.update({
   id: '/feed',
   path: '/feed',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LojaRoute = LojaRouteImport.update({
+  id: '/loja',
+  path: '/loja',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PerfilRoute = PerfilRouteImport.update({
+  id: '/perfil',
+  path: '/perfil',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MensagensIndexRoute = MensagensIndexRouteImport.update({
@@ -38,12 +50,16 @@ const MensagensChatIdRoute = MensagensChatIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/feed': typeof FeedRoute
+  '/loja': typeof LojaRoute
+  '/perfil': typeof PerfilRoute
   '/mensagens/$chatId': typeof MensagensChatIdRoute
   '/mensagens/': typeof MensagensIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/feed': typeof FeedRoute
+  '/loja': typeof LojaRoute
+  '/perfil': typeof PerfilRoute
   '/mensagens/$chatId': typeof MensagensChatIdRoute
   '/mensagens': typeof MensagensIndexRoute
 }
@@ -51,20 +67,32 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/feed': typeof FeedRoute
+  '/loja': typeof LojaRoute
+  '/perfil': typeof PerfilRoute
   '/mensagens/$chatId': typeof MensagensChatIdRoute
   '/mensagens/': typeof MensagensIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/feed' | '/mensagens/$chatId' | '/mensagens/'
+  fullPaths:
+    '/' | '/feed' | '/loja' | '/perfil' | '/mensagens/$chatId' | '/mensagens/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/feed' | '/mensagens/$chatId' | '/mensagens'
-  id: '__root__' | '/' | '/feed' | '/mensagens/$chatId' | '/mensagens/'
+  to: '/' | '/feed' | '/loja' | '/perfil' | '/mensagens/$chatId' | '/mensagens'
+  id:
+    | '__root__'
+    | '/'
+    | '/feed'
+    | '/loja'
+    | '/perfil'
+    | '/mensagens/$chatId'
+    | '/mensagens/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   FeedRoute: typeof FeedRoute
+  LojaRoute: typeof LojaRoute
+  PerfilRoute: typeof PerfilRoute
   MensagensChatIdRoute: typeof MensagensChatIdRoute
   MensagensIndexRoute: typeof MensagensIndexRoute
 }
@@ -83,6 +111,20 @@ declare module '@tanstack/react-router' {
       path: '/feed'
       fullPath: '/feed'
       preLoaderRoute: typeof FeedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/loja': {
+      id: '/loja'
+      path: '/loja'
+      fullPath: '/loja'
+      preLoaderRoute: typeof LojaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/perfil': {
+      id: '/perfil'
+      path: '/perfil'
+      fullPath: '/perfil'
+      preLoaderRoute: typeof PerfilRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/mensagens/': {
@@ -105,6 +147,8 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   FeedRoute: FeedRoute,
+  LojaRoute: LojaRoute,
+  PerfilRoute: PerfilRoute,
   MensagensChatIdRoute: MensagensChatIdRoute,
   MensagensIndexRoute: MensagensIndexRoute,
 }
