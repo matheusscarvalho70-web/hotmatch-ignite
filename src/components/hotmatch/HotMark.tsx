@@ -37,25 +37,25 @@ export function HotMark({
 
       {/* haste fluída esquerda -> cruza para a direita */}
       <path
-        d="M14 8C14 24 26 26 32 32c6 6 18 8 18 24"
+        d="M18 9c-6 14 6 20 0 46"
         stroke={`url(#${gold})`}
         strokeWidth={strokeWidth}
         strokeLinecap="round"
       />
       {/* haste fluída direita -> cruza para a esquerda */}
       <path
-        d="M50 8c0 16-12 18-18 24-6 6-18 8-18 24"
+        d="M46 9c6 14-6 20 0 46"
         stroke={`url(#${hot})`}
         strokeWidth={strokeWidth}
         strokeLinecap="round"
       />
       {/* travessão do H */}
       <path
-        d="M20 32h24"
+        d="M18 38c8-4 20-8 28-12"
         stroke={`url(#${gold})`}
-        strokeWidth={strokeWidth - 2}
+        strokeWidth={strokeWidth - 1}
         strokeLinecap="round"
-        opacity="0.55"
+        opacity="0.75"
       />
       {/* faísca central de conexão */}
       <path
