@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
-import { Flame, Coins } from "lucide-react";
+import { Coins } from "lucide-react";
+import { HotMark } from "@/components/hotmatch/HotMark";
 import { useAppState } from "@/lib/hotmatch/store";
 
 export function CoinBadge() {
