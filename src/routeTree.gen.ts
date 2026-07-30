@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as BemVindoRouteImport } from './routes/bem-vindo'
 import { Route as FeedRouteImport } from './routes/feed'
 import { Route as LojaRouteImport } from './routes/loja'
 import { Route as PerfilRouteImport } from './routes/perfil'
@@ -19,6 +20,11 @@ import { Route as MensagensChatIdRouteImport } from './routes/mensagens.$chatId'
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BemVindoRoute = BemVindoRouteImport.update({
+  id: '/bem-vindo',
+  path: '/bem-vindo',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FeedRoute = FeedRouteImport.update({
@@ -49,6 +55,7 @@ const MensagensChatIdRoute = MensagensChatIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/bem-vindo': typeof BemVindoRoute
   '/feed': typeof FeedRoute
   '/loja': typeof LojaRoute
   '/perfil': typeof PerfilRoute
@@ -57,6 +64,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/bem-vindo': typeof BemVindoRoute
   '/feed': typeof FeedRoute
   '/loja': typeof LojaRoute
   '/perfil': typeof PerfilRoute
@@ -66,6 +74,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/bem-vindo': typeof BemVindoRoute
   '/feed': typeof FeedRoute
   '/loja': typeof LojaRoute
   '/perfil': typeof PerfilRoute
@@ -75,12 +84,26 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/feed' | '/loja' | '/perfil' | '/mensagens/$chatId' | '/mensagens/'
+    | '/'
+    | '/bem-vindo'
+    | '/feed'
+    | '/loja'
+    | '/perfil'
+    | '/mensagens/$chatId'
+    | '/mensagens/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/feed' | '/loja' | '/perfil' | '/mensagens/$chatId' | '/mensagens'
+  to:
+    | '/'
+    | '/bem-vindo'
+    | '/feed'
+    | '/loja'
+    | '/perfil'
+    | '/mensagens/$chatId'
+    | '/mensagens'
   id:
     | '__root__'
     | '/'
+    | '/bem-vindo'
     | '/feed'
     | '/loja'
     | '/perfil'
@@ -90,6 +113,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  BemVindoRoute: typeof BemVindoRoute
   FeedRoute: typeof FeedRoute
   LojaRoute: typeof LojaRoute
   PerfilRoute: typeof PerfilRoute
@@ -104,6 +128,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/bem-vindo': {
+      id: '/bem-vindo'
+      path: '/bem-vindo'
+      fullPath: '/bem-vindo'
+      preLoaderRoute: typeof BemVindoRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/feed': {
@@ -146,6 +177,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  BemVindoRoute: BemVindoRoute,
   FeedRoute: FeedRoute,
   LojaRoute: LojaRoute,
   PerfilRoute: PerfilRoute,
@@ -155,13 +187,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
