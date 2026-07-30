@@ -11,6 +11,8 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as FeedRouteImport } from './routes/feed'
+import { Route as MensagensIndexRouteImport } from './routes/mensagens.index'
+import { Route as MensagensChatIdRouteImport } from './routes/mensagens.$chatId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -22,31 +24,49 @@ const FeedRoute = FeedRouteImport.update({
   path: '/feed',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MensagensIndexRoute = MensagensIndexRouteImport.update({
+  id: '/mensagens/',
+  path: '/mensagens/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MensagensChatIdRoute = MensagensChatIdRouteImport.update({
+  id: '/mensagens/$chatId',
+  path: '/mensagens/$chatId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/feed': typeof FeedRoute
+  '/mensagens/$chatId': typeof MensagensChatIdRoute
+  '/mensagens/': typeof MensagensIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/feed': typeof FeedRoute
+  '/mensagens/$chatId': typeof MensagensChatIdRoute
+  '/mensagens': typeof MensagensIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/feed': typeof FeedRoute
+  '/mensagens/$chatId': typeof MensagensChatIdRoute
+  '/mensagens/': typeof MensagensIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/feed'
+  fullPaths: '/' | '/feed' | '/mensagens/$chatId' | '/mensagens/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/feed'
-  id: '__root__' | '/' | '/feed'
+  to: '/' | '/feed' | '/mensagens/$chatId' | '/mensagens'
+  id: '__root__' | '/' | '/feed' | '/mensagens/$chatId' | '/mensagens/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   FeedRoute: typeof FeedRoute
+  MensagensChatIdRoute: typeof MensagensChatIdRoute
+  MensagensIndexRoute: typeof MensagensIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -65,12 +85,28 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof FeedRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/mensagens/': {
+      id: '/mensagens/'
+      path: '/mensagens'
+      fullPath: '/mensagens/'
+      preLoaderRoute: typeof MensagensIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/mensagens/$chatId': {
+      id: '/mensagens/$chatId'
+      path: '/mensagens/$chatId'
+      fullPath: '/mensagens/$chatId'
+      preLoaderRoute: typeof MensagensChatIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   FeedRoute: FeedRoute,
+  MensagensChatIdRoute: MensagensChatIdRoute,
+  MensagensIndexRoute: MensagensIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
