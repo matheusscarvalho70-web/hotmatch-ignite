@@ -1,8 +1,9 @@
 import { Link } from "@tanstack/react-router";
-import { Flame, LayoutGrid, MessageCircle, Store, User } from "lucide-react";
+import { LayoutGrid, MessageCircle, Store, User } from "lucide-react";
+import { HotMark } from "@/components/hotmatch/HotMark";
 
 const items = [
-  { to: "/", label: "Descobrir", icon: Flame },
+  { to: "/", label: "Descobrir", icon: (props: { className?: string }) => <HotMark {...props} /> },
   { to: "/feed", label: "Feed", icon: LayoutGrid },
   { to: "/mensagens", label: "Mensagens", icon: MessageCircle },
   { to: "/loja", label: "Loja", icon: Store },

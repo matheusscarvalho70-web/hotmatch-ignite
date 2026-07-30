@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
-import { Flame, Coins } from "lucide-react";
+import { Coins } from "lucide-react";
+import { HotMark } from "@/components/hotmatch/HotMark";
 import { useAppState } from "@/lib/hotmatch/store";
 
 export function CoinBadge() {
@@ -19,8 +20,8 @@ export function TopBar({ title, right }: { title?: string; right?: React.ReactNo
   return (
     <header className="sticky top-0 z-40 flex items-center justify-between gap-3 bg-gradient-to-b from-background via-background/90 to-transparent px-4 pb-4 pt-[calc(env(safe-area-inset-top)+0.9rem)]">
       <div className="flex min-w-0 items-center gap-2">
-        <span className="grid size-9 shrink-0 place-items-center rounded-2xl bg-gradient-hot shadow-hot">
-          <Flame className="size-5 text-primary-foreground" fill="currentColor" />
+        <span className="grid size-9 shrink-0 place-items-center rounded-2xl border border-gold/25 bg-surface-2/80 shadow-hot">
+          <HotMark className="size-5" />
         </span>
         <h1 className="truncate text-lg font-extrabold tracking-tight">
           {title ?? (
