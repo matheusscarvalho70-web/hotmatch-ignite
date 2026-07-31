@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
   ArrowLeft,
   ArrowRight,
@@ -12,6 +12,8 @@ import {
   Plus,
   ShieldCheck,
   Sparkles,
+  User,
+  UserRound,
   Wallet,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -20,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { actions } from "@/lib/hotmatch/store";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/bem-vindo")({
@@ -37,20 +40,24 @@ export const Route = createFileRoute("/bem-vindo")({
         content:
           "Paquera local, feed exclusivo e monetização para criadoras VIP. Comece agora no HotMatch.",
       },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
   component: WelcomePage,
 });
 
-type Profile = "buyer" | "creator";
+type Gender = "male" | "female";
 
 function WelcomePage() {
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [open, setOpen] = useState(false);
+  const [gender, setGender] = useState<Gender | null>(null);
+  const [signupOpen, setSignupOpen] = useState(false);
+  const [loginOpen, setLoginOpen] = useState(false);
 
-  const start = (p: Profile) => {
-    setProfile(p);
-    setOpen(true);
+  const start = (g: Gender) => {
+    setGender(g);
+    actions.setGender(g);
+    setSignupOpen(true);
   };
 
   return (
@@ -68,7 +75,7 @@ function WelcomePage() {
           </span>
         </div>
         <button
-          onClick={() => start("buyer")}
+          onClick={() => setLoginOpen(true)}
           className="tap-scale rounded-full border border-border bg-surface/70 px-3.5 py-2 text-xs font-semibold text-muted-foreground"
         >
           Já tenho conta / Entrar
@@ -92,20 +99,22 @@ function WelcomePage() {
 
         <section className="mt-8 space-y-3">
           <ChoiceCard
-            onClick={() => start("buyer")}
+            onClick={() => start("male")}
             icon={<HotMark className="size-7" />}
             tone="hot"
             title="Quero Paquerar e Ver Mídias Exclusivas"
             desc="Swipe local, feed VIP e chat com mimos."
             chip="Acesso imediato"
+            genderIcon={<User className="size-4" />}
           />
           <ChoiceCard
-            onClick={() => start("creator")}
+            onClick={() => start("female")}
             icon={<Crown className="size-6 text-gold" />}
             tone="gold"
             title="Quero Ser Criadora VIP e Monetizar"
             desc="Poste mídias trancadas e receba via Pix."
             chip="Monetize seu Conteúdo"
+            genderIcon={<UserRound className="size-4" />}
           />
         </section>
 
@@ -116,14 +125,12 @@ function WelcomePage() {
         </section>
 
         <p className="mt-6 text-center text-[11px] text-muted-foreground">
-          Ao continuar você confirma ter mais de 18 anos.{" "}
-          <Link to="/" className="font-semibold text-foreground">
-            Explorar sem cadastro
-          </Link>
+          Ao continuar você confirma ter mais de 18 anos.
         </p>
       </main>
 
-      <SignupFlow open={open} onOpenChange={setOpen} profile={profile ?? "buyer"} />
+      <LoginDialog open={loginOpen} onOpenChange={setLoginOpen} />
+      <SignupFlow open={signupOpen} onOpenChange={setSignupOpen} gender={gender ?? "male"} />
     </div>
   );
 }
@@ -144,6 +151,7 @@ function ChoiceCard({
   desc,
   chip,
   tone,
+  genderIcon,
 }: {
   onClick: () => void;
   icon: React.ReactNode;
@@ -151,12 +159,13 @@ function ChoiceCard({
   desc: string;
   chip: string;
   tone: "hot" | "gold";
+  genderIcon: React.ReactNode;
 }) {
   return (
     <button
       onClick={onClick}
       className={cn(
-        "tap-scale glass-panel flex w-full items-center gap-4 rounded-3xl p-4 text-left shadow-card-premium",
+        "tap-scale glass-panel relative flex w-full items-center gap-4 rounded-3xl p-4 text-left shadow-card-premium",
         tone === "gold" ? "border-gold/25" : "border-primary/25",
       )}
     >
@@ -181,38 +190,108 @@ function ChoiceCard({
         <span className="mt-0.5 block text-xs text-muted-foreground">{desc}</span>
       </span>
       <ArrowRight className="size-5 shrink-0 text-muted-foreground" />
+      <span
+        className={cn(
+          "absolute bottom-3 right-3 grid size-7 place-items-center rounded-full border",
+          tone === "gold"
+            ? "border-gold/25 bg-gold/10 text-gold"
+            : "border-primary/25 bg-primary/10 text-primary",
+        )}
+        aria-hidden
+      >
+        {genderIcon}
+      </span>
     </button>
+  );
+}
+
+/* ---------------- Login ---------------- */
+
+function LoginDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+  const navigate = useNavigate();
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onOpenChange(false);
+    toast.success("Bem-vindo de volta ao HotMatch 🔥");
+    navigate({ to: "/" });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="rounded-3xl border-border bg-surface p-5 sm:max-w-[24rem]">
+        <DialogTitle className="sr-only">Entrar no HotMatch</DialogTitle>
+        <div className="flex items-center gap-2">
+          <HotMark className="size-6" />
+          <span className="text-base font-extrabold tracking-tight">
+            Entrar no Hot<span className="text-gradient-gold">Match</span>
+          </span>
+        </div>
+        <form onSubmit={submit} className="mt-4 space-y-3">
+          <Field label="E-mail ou Telefone" placeholder="voce@email.com ou (11) 90000-0000" />
+          <Field label="Senha" type="password" placeholder="Sua senha" />
+          <Button
+            type="submit"
+            className="mt-2 h-12 w-full rounded-full bg-gradient-hot text-sm font-bold text-primary-foreground shadow-hot"
+          >
+            Entrar na minha conta
+            <ArrowRight className="size-4" />
+          </Button>
+          <button
+            type="button"
+            onClick={() => toast.info("Enviamos um link de recuperação para seu contato.")}
+            className="mx-auto block text-[11px] font-medium text-muted-foreground underline-offset-4 hover:underline"
+          >
+            Esqueceu a senha?
+          </button>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 
 /* ---------------- Fluxo de cadastro ---------------- */
 
-const GENDERS = ["Mulher", "Homem", "Não-binário", "Prefiro não dizer"];
+const maskCPF = (v: string) =>
+  v
+    .replace(/\D/g, "")
+    .slice(0, 11)
+    .replace(/(\d{3})(\d)/, "$1.$2")
+    .replace(/(\d{3})\.(\d{3})(\d)/, "$1.$2.$3")
+    .replace(/(\d{3})\.(\d{3})\.(\d{3})(\d)/, "$1.$2.$3-$4");
 
 function SignupFlow({
   open,
   onOpenChange,
-  profile,
+  gender,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  profile: Profile;
+  gender: Gender;
 }) {
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
-  const [gender, setGender] = useState<string | null>(null);
   const [photos, setPhotos] = useState<number[]>([]);
   const [scanning, setScanning] = useState(false);
   const [scanned, setScanned] = useState(false);
+  const [cpf, setCpf] = useState("");
 
-  const needsVerification = profile === "creator" || gender === "Mulher";
-  const totalSteps = needsVerification ? 3 : 2;
+  const totalSteps = 3;
+  const isCreator = gender === "female";
 
   const next = () => {
     if (step >= totalSteps) {
+      if (!scanned) {
+        toast.error("Conclua a validação facial para continuar.");
+        return;
+      }
+      if (isCreator && cpf.replace(/\D/g, "").length !== 11) {
+        toast.error("Informe um CPF válido para liberar o selo VIP e os saques Pix.");
+        return;
+      }
       onOpenChange(false);
-      toast.success("Conta criada! Bem-vinda ao HotMatch 🔥");
-      navigate({ to: profile === "creator" ? "/perfil" : "/" });
+      toast.success("Conta criada! Bem-vindo ao HotMatch 🔥");
+      navigate({ to: isCreator ? "/perfil" : "/" });
       return;
     }
     setStep((s) => s + 1);
@@ -223,7 +302,7 @@ function SignupFlow({
     setTimeout(() => {
       setScanning(false);
       setScanned(true);
-      toast.success("Selo de Criadora VIP validado!");
+      toast.success(isCreator ? "Selo de Criadora VIP validado!" : "Perfil validado como real!");
     }, 2200);
   };
 
@@ -252,7 +331,10 @@ function SignupFlow({
               ))}
             </div>
             <p className="mt-1.5 text-[11px] text-muted-foreground">
-              Etapa {step} de {totalSteps}
+              Etapa {step} de {totalSteps} ·{" "}
+              <span className={isCreator ? "text-gold" : "text-primary"}>
+                {isCreator ? "Criadora VIP" : "Paquera"}
+              </span>
             </p>
           </div>
         </div>
@@ -260,7 +342,7 @@ function SignupFlow({
         {step === 1 && (
           <div className="mt-4 space-y-3">
             <h2 className="text-lg font-extrabold tracking-tight">Dados básicos</h2>
-            <Field label="Nome completo" placeholder="Como devemos te chamar" />
+            <Field label="Seu Nome ou Apelido" placeholder="Ex: Lucas ou Mari" />
             <Field label="E-mail" type="email" placeholder="voce@email.com" />
             <Field label="Senha segura" type="password" placeholder="Mínimo 8 caracteres" />
             <Field label="Data de nascimento (+18)" type="date" />
@@ -270,61 +352,45 @@ function SignupFlow({
 
         {step === 2 && (
           <div className="mt-4 space-y-4">
-            <h2 className="text-lg font-extrabold tracking-tight">Gênero & fotos</h2>
-            <div className="grid grid-cols-2 gap-2">
-              {GENDERS.map((g) => (
-                <button
-                  key={g}
-                  onClick={() => setGender(g)}
-                  className={cn(
-                    "tap-scale rounded-2xl border px-3 py-2.5 text-xs font-semibold",
-                    gender === g
-                      ? "border-primary bg-primary/15 text-foreground"
-                      : "border-border bg-surface-2 text-muted-foreground",
-                  )}
-                >
-                  {g}
-                </button>
-              ))}
-            </div>
-            <div>
-              <p className="mb-2 text-xs font-semibold text-muted-foreground">
-                Fotos públicas (até 4)
-              </p>
-              <div className="grid grid-cols-4 gap-2">
-                {[0, 1, 2, 3].map((i) => {
-                  const filled = photos.includes(i);
-                  return (
-                    <button
-                      key={i}
-                      onClick={() =>
-                        setPhotos((p) => (filled ? p.filter((x) => x !== i) : [...p, i]))
-                      }
-                      className={cn(
-                        "tap-scale grid aspect-[3/4] place-items-center rounded-2xl border border-dashed",
-                        filled
-                          ? "border-gold/50 bg-gold/10 text-gold"
-                          : "border-border bg-surface-2 text-muted-foreground",
-                      )}
-                    >
-                      {filled ? <Check className="size-5" /> : <Plus className="size-5" />}
-                    </button>
-                  );
-                })}
-              </div>
+            <h2 className="text-lg font-extrabold tracking-tight">Fotos públicas</h2>
+            <p className="text-xs text-muted-foreground">
+              Adicione até 4 fotos que aparecem no seu perfil público.
+            </p>
+            <div className="grid grid-cols-4 gap-2">
+              {[0, 1, 2, 3].map((i) => {
+                const filled = photos.includes(i);
+                return (
+                  <button
+                    key={i}
+                    onClick={() => setPhotos((p) => (filled ? p.filter((x) => x !== i) : [...p, i]))}
+                    className={cn(
+                      "tap-scale grid aspect-[3/4] place-items-center rounded-2xl border border-dashed",
+                      filled
+                        ? "border-gold/50 bg-gold/10 text-gold"
+                        : "border-border bg-surface-2 text-muted-foreground",
+                    )}
+                  >
+                    {filled ? <Check className="size-5" /> : <Plus className="size-5" />}
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}
 
         {step === 3 && (
           <div className="mt-4 space-y-4">
-            <h2 className="text-lg font-extrabold tracking-tight">Validação & Selo VIP</h2>
+            <h2 className="text-lg font-extrabold tracking-tight">
+              {isCreator ? "Validação & Selo VIP" : "Validação Anti-Fake"}
+            </h2>
             <div className="rounded-2xl border border-gold/25 bg-gold/10 p-3">
               <p className="flex items-center gap-2 text-xs font-bold text-gold">
                 <ShieldCheck className="size-4" /> Garantia de Segurança HotMatch
               </p>
               <p className="mt-1 text-[11px] text-muted-foreground">
-                Apenas pessoas reais! A verificação protege sua conta e libera saques via Pix.
+                {isCreator
+                  ? "Apenas pessoas reais! A verificação protege sua conta e libera saques via Pix."
+                  : "Apenas pessoas reais! A validação facial elimina perfis falsos da comunidade."}
               </p>
             </div>
 
@@ -353,7 +419,9 @@ function SignupFlow({
                   ? "Escaneando rosto..."
                   : scanned
                     ? "Rosto validado com sucesso"
-                    : "Posicione seu rosto no círculo para validar seu Selo de Criadora VIP"}
+                    : isCreator
+                      ? "Posicione seu rosto no círculo para validar seu Selo de Criadora VIP"
+                      : "Posicione seu rosto no círculo para confirmar que você é real"}
               </p>
               {!scanned && (
                 <Button
@@ -367,7 +435,15 @@ function SignupFlow({
               )}
             </div>
 
-            <Field label="CPF (para saques Pix de mesma titularidade)" placeholder="000.000.000-00" />
+            {isCreator && (
+              <Field
+                label="CPF (obrigatório para selo VIP e saques Pix)"
+                placeholder="000.000.000-00"
+                inputMode="numeric"
+                value={cpf}
+                onChange={(e) => setCpf(maskCPF(e.target.value))}
+              />
+            )}
           </div>
         )}
 

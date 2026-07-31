@@ -2,8 +2,11 @@ import { useSyncExternalStore } from "react";
 
 export type Role = "buyer" | "creator";
 
+export type Gender = "male" | "female";
+
 export type AppState = {
   coins: number;
+  gender: Gender;
   role: Role;
   earnings: number;
   unlocked: string[];
@@ -12,6 +15,7 @@ export type AppState = {
 
 let state: AppState = {
   coins: 320,
+  gender: "male",
   role: "buyer",
   earnings: 2480.5,
   unlocked: [],
@@ -55,6 +59,10 @@ export const actions = {
     emit();
     return true;
   },
+  setGender(gender: Gender) {
+    state = { ...state, gender, role: gender === "female" ? "creator" : "buyer" };
+    emit();
+  },
   toggleRole() {
     state = { ...state, role: state.role === "buyer" ? "creator" : "buyer" };
     emit();
@@ -68,7 +76,7 @@ export const actions = {
     emit();
   },
   signOut() {
-    state = { coins: 320, role: "buyer", earnings: 2480.5, unlocked: [], vip: false };
+    state = { coins: 320, gender: "male", role: "buyer", earnings: 2480.5, unlocked: [], vip: false };
     emit();
   },
 };
