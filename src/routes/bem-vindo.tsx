@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { actions } from "@/lib/hotmatch/store";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/bem-vindo")({
@@ -55,6 +56,7 @@ function WelcomePage() {
 
   const start = (g: Gender) => {
     setGender(g);
+    actions.setGender(g);
     setSignupOpen(true);
   };
 
