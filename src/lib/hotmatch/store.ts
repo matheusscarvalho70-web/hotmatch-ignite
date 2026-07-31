@@ -55,6 +55,10 @@ export const actions = {
     emit();
     return true;
   },
+  setGender(gender: "male" | "female") {
+    state = { ...state, gender, role: gender === "female" ? "creator" : "buyer" };
+    emit();
+  },
   toggleRole() {
     state = { ...state, role: state.role === "buyer" ? "creator" : "buyer" };
     emit();
