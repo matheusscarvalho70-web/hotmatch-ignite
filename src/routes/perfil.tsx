@@ -154,9 +154,16 @@ function ProfilePage() {
         ))}
       </ul>
 
-      <button className="mx-4 mt-4 flex w-[calc(100%-2rem)] items-center justify-center gap-2 rounded-full border border-border bg-surface py-3 text-sm font-semibold text-muted-foreground">
+      <button
+        onClick={() => {
+          actions.signOut();
+          toast.success("Você saiu da conta");
+          navigate({ to: "/bem-vindo" });
+        }}
+        className="tap-scale mx-4 mt-4 flex w-[calc(100%-2rem)] items-center justify-center gap-2 rounded-full border border-border bg-surface py-3 text-sm font-semibold text-muted-foreground"
+      >
         <LogOut className="size-4" />
-        Sair da conta
+        Sair da conta / Alternar conta
       </button>
     </div>
   );
