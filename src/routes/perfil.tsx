@@ -48,6 +48,7 @@ function ProfilePage() {
   const [tab, setTab] = useState<"public" | "vip">("public");
   const { vip } = useAppState();
   const me = profiles[0];
+  const navigate = useNavigate();
 
   return (
     <div className="min-h-screen pb-32">
