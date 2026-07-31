@@ -1,5 +1,6 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
+import { toast } from "sonner";
 import {
   ChevronRight,
   Crown,
@@ -14,7 +15,7 @@ import {
 } from "lucide-react";
 import { TopBar } from "@/components/hotmatch/TopBar";
 import { photos, profiles } from "@/lib/hotmatch/data";
-import { useAppState } from "@/lib/hotmatch/store";
+import { actions, useAppState } from "@/lib/hotmatch/store";
 
 export const Route = createFileRoute("/perfil")({
   head: () => ({
@@ -47,6 +48,7 @@ function ProfilePage() {
   const [tab, setTab] = useState<"public" | "vip">("public");
   const { vip } = useAppState();
   const me = profiles[0];
+  const navigate = useNavigate();
 
   return (
     <div className="min-h-screen pb-32">
@@ -154,9 +156,16 @@ function ProfilePage() {
         ))}
       </ul>
 
-      <button className="mx-4 mt-4 flex w-[calc(100%-2rem)] items-center justify-center gap-2 rounded-full border border-border bg-surface py-3 text-sm font-semibold text-muted-foreground">
+      <button
+        onClick={() => {
+          actions.signOut();
+          toast.success("Você saiu da conta");
+          navigate({ to: "/bem-vindo" });
+        }}
+        className="tap-scale mx-4 mt-4 flex w-[calc(100%-2rem)] items-center justify-center gap-2 rounded-full border border-border bg-surface py-3 text-sm font-semibold text-muted-foreground"
+      >
         <LogOut className="size-4" />
-        Sair da conta
+        Sair da conta / Alternar conta
       </button>
     </div>
   );

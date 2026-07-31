@@ -67,6 +67,10 @@ export const actions = {
     state = { ...state, earnings: Math.max(0, state.earnings - amount) };
     emit();
   },
+  signOut() {
+    state = { coins: 320, role: "buyer", earnings: 2480.5, unlocked: [], vip: false };
+    emit();
+  },
 };
 
 export const formatBRL = (v: number) =>
