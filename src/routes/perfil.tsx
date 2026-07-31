@@ -1,5 +1,6 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
+import { toast } from "sonner";
 import {
   ChevronRight,
   Crown,
@@ -14,7 +15,7 @@ import {
 } from "lucide-react";
 import { TopBar } from "@/components/hotmatch/TopBar";
 import { photos, profiles } from "@/lib/hotmatch/data";
-import { useAppState } from "@/lib/hotmatch/store";
+import { actions, useAppState } from "@/lib/hotmatch/store";
 
 export const Route = createFileRoute("/perfil")({
   head: () => ({
