@@ -18,12 +18,17 @@ export function EditProfileModal({ open, onClose }: Props) {
       : "Apaixonado por música, viagens e boa conversa.",
   );
   const [location, setLocation] = useState("São Paulo, SP");
+
+  // Avatar
   const [hasAvatar, setHasAvatar] = useState(true);
 
-  const publicSlots = [photos.p1, photos.p2, photos.p3, null, null, null];
-  const [publicFilled, setPublicFilled] = useState([true, true, true, false, false, false]);
-  const vipSlots = [photos.p3, photos.p4, null, null];
-  const [vipFilled, setVipFilled] = useState([true, true, false, false]);
+  // Public gallery: 3 slots (plus avatar = 4 total)
+  const PUBLIC_SRCS = [photos.p2, photos.p3, photos.p4];
+  const [publicFilled, setPublicFilled] = useState([true, true, false]);
+
+  // VIP gallery: 6 slots (creator only)
+  const VIP_SRCS = [photos.p3, photos.p4, photos.p1, photos.p2, photos.p3, photos.p4];
+  const [vipFilled, setVipFilled] = useState([true, true, false, false, false, false]);
 
   function save() {
     toast("Alterações salvas! ✨", {
@@ -45,12 +50,10 @@ export function EditProfileModal({ open, onClose }: Props) {
         style={{ maxHeight: "92dvh" }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Handle */}
         <div className="flex justify-center pt-3">
           <div className="h-1 w-10 rounded-full bg-border" />
         </div>
 
-        {/* Header */}
         <div className="flex items-center justify-between px-5 py-4">
           <h2 className="text-lg font-extrabold">Editar Perfil</h2>
           <button
@@ -102,13 +105,13 @@ export function EditProfileModal({ open, onClose }: Props) {
             <Field label="Localização" value={location} onChange={setLocation} />
           </div>
 
-          {/* Public gallery */}
+          {/* Public gallery — 3 slots (1 avatar slot above + 3 here = 4 total) */}
           <div>
-            <p className="mb-3 text-xs font-bold uppercase tracking-widest text-muted-foreground">
-              Galeria Pública
+            <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+              Galeria Pública · 3 fotos secundárias
             </p>
             <div className="grid grid-cols-3 gap-2">
-              {publicSlots.map((src, i) => (
+              {PUBLIC_SRCS.map((src, i) => (
                 <GallerySlot
                   key={i}
                   src={publicFilled[i] ? src : null}
@@ -120,21 +123,20 @@ export function EditProfileModal({ open, onClose }: Props) {
             </div>
           </div>
 
-          {/* VIP gallery (creator only) */}
+          {/* VIP gallery — 6 slots, creators only */}
           {isCreator && (
             <div>
-              <p className="mb-3 text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                Galeria VIP 🔒
+              <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                Galeria VIP 🔒 · 6 slots
               </p>
-              <div className="grid grid-cols-4 gap-2">
-                {vipSlots.map((src, i) => (
+              <div className="grid grid-cols-3 gap-2">
+                {VIP_SRCS.map((src, i) => (
                   <GallerySlot
                     key={i}
                     src={vipFilled[i] ? src : null}
                     onToggle={() =>
                       setVipFilled((f) => f.map((v, j) => (j === i ? !v : v)))
                     }
-                    small
                   />
                 ))}
               </div>
@@ -180,16 +182,14 @@ function Field({
 function GallerySlot({
   src,
   onToggle,
-  small,
 }: {
   src: string | null | undefined;
   onToggle: () => void;
-  small?: boolean;
 }) {
   return (
     <button
       onClick={onToggle}
-      className={`tap-scale relative overflow-hidden rounded-xl border-2 border-dashed border-border bg-surface-2 ${small ? "aspect-square" : "aspect-square"}`}
+      className="tap-scale relative aspect-square overflow-hidden rounded-xl border-2 border-dashed border-border bg-surface-2"
     >
       {src ? (
         <img src={src} alt="" className="size-full object-cover" />

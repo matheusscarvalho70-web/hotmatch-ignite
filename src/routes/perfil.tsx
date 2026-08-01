@@ -45,12 +45,14 @@ export const Route = createFileRoute("/perfil")({
   component: ProfilePage,
 });
 
-const publicGallery = [photos.p1, photos.p2, photos.p3, photos.p4, photos.p2, photos.p4];
+const publicGallery = [photos.p1, photos.p2, photos.p3];
 const vipGallery = [
-  { src: photos.p3, price: 60 },
-  { src: photos.p1, price: 90 },
-  { src: photos.p4, price: 45 },
+  { src: photos.p3, price: 45 },
+  { src: photos.p1, price: 60 },
+  { src: photos.p4, price: 90 },
   { src: photos.p2, price: 150 },
+  { src: photos.p3, price: 60 },
+  { src: photos.p1, price: 120 },
 ];
 
 type ModalKey = "edit" | "privacy" | "role" | "stats" | "support" | null;

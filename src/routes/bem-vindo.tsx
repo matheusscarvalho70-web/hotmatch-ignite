@@ -272,6 +272,7 @@ function SignupFlow({
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [photos, setPhotos] = useState<number[]>([]);
+  const [avatarUploaded, setAvatarUploaded] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [scanned, setScanned] = useState(false);
   const [cpf, setCpf] = useState("");
@@ -280,6 +281,13 @@ function SignupFlow({
   const isCreator = gender === "female";
 
   const next = () => {
+    if (step === 2 && !photos.includes(-1)) {
+      toast("Foto de perfil obrigatória 📸", {
+        description: "Envie uma foto do seu rosto para continuar.",
+        className: "bg-white text-zinc-900 border border-zinc-200 shadow-xl rounded-2xl",
+      });
+      return;
+    }
     if (step >= totalSteps) {
       if (!scanned) {
         toast.error("Conclua a validação facial para continuar.");
@@ -360,11 +368,20 @@ function SignupFlow({
                 Foto de perfil <span className="text-primary">*obrigatória</span>
               </p>
               <button
-                onClick={() =>
+                onClick={() => {
+                  const wasUploaded = photos.includes(-1);
                   setPhotos((p) =>
-                    p.includes(-1) ? p.filter((x) => x !== -1) : [...p, -1],
-                  )
-                }
+                    wasUploaded ? p.filter((x) => x !== -1) : [...p, -1],
+                  );
+                  if (!wasUploaded) {
+                    setAvatarUploaded(true);
+                    toast("Foto enviada com sucesso! ✨", {
+                      description: "Validação facial concluída.",
+                      className:
+                        "bg-white text-zinc-900 border border-zinc-200 shadow-xl rounded-2xl",
+                    });
+                  }
+                }}
                 className={cn(
                   "tap-scale relative grid size-32 place-items-center rounded-full border-2 border-dashed transition-all",
                   photos.includes(-1)
@@ -403,11 +420,18 @@ function SignupFlow({
                   return (
                     <button
                       key={i}
-                      onClick={() =>
+                      onClick={() => {
+                        const wasFilled = photos.includes(i);
                         setPhotos((p) =>
-                          filled ? p.filter((x) => x !== i) : [...p, i],
-                        )
-                      }
+                          wasFilled ? p.filter((x) => x !== i) : [...p, i],
+                        );
+                        if (!wasFilled) {
+                          toast("Foto adicionada à galeria pública! 📸", {
+                            className:
+                              "bg-white text-zinc-900 border border-zinc-200 shadow-xl rounded-2xl",
+                          });
+                        }
+                      }}
                       className={cn(
                         "tap-scale grid aspect-square place-items-center rounded-2xl border border-dashed transition-all",
                         filled
@@ -502,7 +526,7 @@ function SignupFlow({
 
         <Button
           onClick={next}
-          disabled={step === 2 && !photos.includes(-1)}
+          disabled={false}
           className="mt-5 h-12 w-full rounded-full bg-gradient-hot text-sm font-bold text-primary-foreground shadow-hot disabled:opacity-40"
         >
           {step >= totalSteps ? "Criar minha conta" : "Continuar"}

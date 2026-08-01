@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { ChevronDown, ChevronUp, HelpCircle, MessageCircle, X } from "lucide-react";
 
+import { useAppState } from "@/lib/hotmatch/store";
+
 type Props = { open: boolean; onClose: () => void };
 
 const FAQS = [
@@ -27,6 +29,9 @@ const FAQS = [
 ];
 
 export function SupportModal({ open, onClose }: Props) {
+  const { gender } = useAppState();
+  const isCreator = gender === "female";
+  const visibleFaqs = isCreator ? FAQS.filter((f) => !f.q.includes("VIP")) : FAQS;
   const [expanded, setExpanded] = useState<number | null>(null);
 
   if (!open) return null;
@@ -89,7 +94,7 @@ export function SupportModal({ open, onClose }: Props) {
               Perguntas frequentes
             </p>
             <ul className="overflow-hidden rounded-2xl border border-border bg-surface divide-y divide-border">
-              {FAQS.map((faq, i) => (
+              {visibleFaqs.map((faq, i) => (
                 <li key={i}>
                   <button
                     onClick={() => setExpanded(expanded === i ? null : i)}

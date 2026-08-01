@@ -8,6 +8,7 @@ import {
   Lock,
   Mic,
   MicOff,
+  MoreVertical,
   Phone,
   Play,
   Send,
@@ -38,6 +39,10 @@ function Chat() {
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [text, setText] = useState("");
   const [giftOpen, setGiftOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportSubject, setReportSubject] = useState("");
+  const [reportDesc, setReportDesc] = useState("");
   const [recording, setRecording] = useState(false);
   const [recordSecs, setRecordSecs] = useState(0);
   const recordTimer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -138,6 +143,31 @@ function Chat() {
         >
           <Video className="size-4" />
         </button>
+        {/* Three-dots menu */}
+        <div className="relative">
+          <button
+            onClick={() => setMenuOpen((v) => !v)}
+            className="tap-scale grid size-9 place-items-center rounded-full bg-surface-2"
+          >
+            <MoreVertical className="size-4" />
+          </button>
+          {menuOpen && (
+            <>
+              <div className="fixed inset-0 z-[45]" onClick={() => setMenuOpen(false)} />
+              <div className="absolute right-0 top-11 z-[46] min-w-[160px] overflow-hidden rounded-2xl border border-border bg-surface shadow-xl">
+                <button
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setReportOpen(true);
+                  }}
+                  className="flex w-full items-center gap-2 px-4 py-3 text-sm font-medium text-red-400 hover:bg-surface-2"
+                >
+                  🚩 Denunciar perfil
+                </button>
+              </div>
+            </>
+          )}
+        </div>
       </header>
 
       <div className="flex-1 space-y-3 px-4 py-4">
@@ -224,6 +254,69 @@ function Chat() {
           </button>
         )}
       </div>
+
+      {/* Report modal */}
+      {reportOpen && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 px-5 backdrop-blur-sm"
+          onClick={() => setReportOpen(false)}
+        >
+          <div
+            className="w-full max-w-[22rem] overflow-hidden rounded-3xl border border-border bg-surface"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="border-b border-border px-5 py-4">
+              <h2 className="text-base font-extrabold">Denunciar perfil</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">Nossa equipe analisa em até 24h.</p>
+            </div>
+            <div className="space-y-4 p-5">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-muted-foreground">Assunto</label>
+                <input
+                  type="text"
+                  value={reportSubject}
+                  onChange={(e) => setReportSubject(e.target.value)}
+                  placeholder="Ex: Conteúdo impróprio, spam..."
+                  className="w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground outline-none focus:border-primary"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-muted-foreground">Descrição do problema</label>
+                <textarea
+                  value={reportDesc}
+                  onChange={(e) => setReportDesc(e.target.value)}
+                  rows={4}
+                  placeholder="Descreva o que aconteceu..."
+                  className="w-full resize-none rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground outline-none focus:border-primary"
+                />
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setReportOpen(false)}
+                  className="flex-1 rounded-full border border-border py-3 text-sm font-semibold text-muted-foreground"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={() => {
+                    setReportOpen(false);
+                    setReportSubject("");
+                    setReportDesc("");
+                    toast("Denúncia enviada com sucesso.", {
+                      description: "Nossa equipe analisará o caso. 🛡️",
+                      className:
+                        "bg-white text-zinc-900 border border-zinc-200 shadow-xl rounded-2xl",
+                    });
+                  }}
+                  className="tap-scale flex-1 rounded-full bg-gradient-hot py-3 text-sm font-extrabold text-primary-foreground shadow-hot"
+                >
+                  Enviar Denúncia
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {giftOpen && (
         <div

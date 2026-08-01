@@ -19,7 +19,7 @@ export function StatsDrawer({ open, onClose }: Props) {
       ]
     : [
         { icon: Heart, label: "Curtidas enviadas", value: "1.042", sub: "Total acumulado", color: "text-primary" },
-        { icon: Users, label: "Criadores seguindo", value: String(followed.length), sub: "Perfis salvos", color: "text-gold" },
+        { icon: Users, label: "Criadoras que sigo", value: String(followed.length), sub: "Perfis salvos", color: "text-gold" },
         { icon: Eye, label: "Perfis visitados", value: "318", sub: "Últimos 30 dias", color: "text-foreground" },
         { icon: BarChart2, label: "Taxa de resposta", value: "64%", sub: "Mensagens enviadas", color: "text-cyan-400" },
       ];
