@@ -2,7 +2,8 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { Bell, CheckCheck, Coins, Crown, Heart, MessageCircle, Sparkles, X, Zap } from "lucide-react";
 import { useState } from "react";
 import { HotMark } from "@/components/hotmatch/HotMark";
-import { photos, profiles } from "@/lib/hotmatch/data";
+import { useNotifications } from "@/hooks/use-notifications";
+import { useProfiles } from "@/hooks/use-profiles";
 import { useAppState } from "@/lib/hotmatch/store";
 
 /* ------------------------------------------------------------------ */
@@ -155,26 +156,23 @@ function NotificationsDrawer({ onClose }: { onClose: () => void }) {
   const { gender, vip } = useAppState();
   const navigate = useNavigate();
   const isMale = gender === "male";
+  const { notifications, loading } = useNotifications();
+  const { profiles: dbProfiles } = useProfiles();
 
-  const messages = [
-    { profile: profiles[0], text: "Te mandei uma mídia privada 😏", time: "há 5 min" },
-    { profile: profiles[2], text: "Adorei o mimo, obrigada!", time: "há 23 min" },
-  ];
-  const matches = [
-    { profile: profiles[1], time: "há 1 h" },
-    { profile: profiles[3], time: "há 2 h" },
-  ];
-  const likers = [profiles[0], profiles[2], profiles[3]];
+  const msgNotifs   = notifications.filter((n) => n.type === "message");
+  const matchNotifs = notifications.filter((n) => n.type === "match");
+  const likeNotifs  = notifications.filter((n) => n.type === "like");
+
+  // Build avatar lookup: sender name → profile avatar
+  function avatarFor(index: number) {
+    return dbProfiles[index % Math.max(dbProfiles.length, 1)]?.avatar_url ?? "";
+  }
+
+  if (loading) return null;
 
   return (
     <>
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 z-[55]"
-        onClick={onClose}
-      />
-
-      {/* Panel */}
+      <div className="fixed inset-0 z-[55]" onClick={onClose} />
       <div
         className="fixed inset-x-0 top-0 z-[56] mx-auto max-w-[30rem] overflow-y-auto rounded-b-3xl border-b border-x border-border bg-background shadow-[0_8px_32px_rgba(0,0,0,0.45)]"
         style={{ maxHeight: "80dvh", paddingTop: "calc(env(safe-area-inset-top) + 4rem)" }}
@@ -182,68 +180,53 @@ function NotificationsDrawer({ onClose }: { onClose: () => void }) {
         <div className="space-y-4 p-4 pb-6">
           <div className="flex items-center justify-between">
             <h3 className="text-base font-extrabold">Notificações</h3>
-            <button
-              onClick={onClose}
-              className="grid size-7 place-items-center rounded-full bg-surface-2"
-            >
+            <button onClick={onClose} className="grid size-7 place-items-center rounded-full bg-surface-2">
               <X className="size-4 text-muted-foreground" />
             </button>
           </div>
 
-          {/* New Messages */}
-          <Section title="Novas mensagens" icon={<MessageCircle className="size-3.5 text-primary" />}>
-            {messages.map((m, i) => (
-              <button
-                key={i}
-                onClick={() => {
-                  onClose();
-                  navigate({ to: "/mensagens/$chatId", params: { chatId: m.profile.id } });
-                }}
-                className="flex w-full items-center gap-3 py-3 text-left"
-              >
-                <img
-                  src={m.profile.photo}
-                  alt={m.profile.name}
-                  className="size-10 rounded-full object-cover shrink-0"
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold">{m.profile.name}</p>
-                  <p className="truncate text-xs text-muted-foreground">{m.text}</p>
-                </div>
-                <span className="shrink-0 text-[10px] text-muted-foreground">{m.time}</span>
-              </button>
-            ))}
-          </Section>
+          {msgNotifs.length > 0 && (
+            <Section title="Novas mensagens" icon={<MessageCircle className="size-3.5 text-primary" />}>
+              {msgNotifs.map((n, i) => (
+                <button
+                  key={n.id}
+                  onClick={() => { onClose(); navigate({ to: "/mensagens" }); }}
+                  className="flex w-full items-center gap-3 py-3 text-left"
+                >
+                  <img src={avatarFor(i)} alt="" className="size-10 shrink-0 rounded-full object-cover" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold">{n.title}</p>
+                    <p className="truncate text-xs text-muted-foreground">{n.content}</p>
+                  </div>
+                  {!n.is_read && <span className="size-2 shrink-0 rounded-full bg-primary" />}
+                </button>
+              ))}
+            </Section>
+          )}
 
-          {/* New Matches */}
-          <Section title="Novos matches" icon={<Heart className="size-3.5 text-primary" />}>
-            {matches.map((m, i) => (
-              <div key={i} className="flex items-center gap-3 py-3">
-                <div className="ring-match grid size-10 place-items-center rounded-full p-[2px] shrink-0">
-                  <img
-                    src={m.profile.photo}
-                    alt={m.profile.name}
-                    className="size-full rounded-full object-cover"
-                  />
+          {matchNotifs.length > 0 && (
+            <Section title="Novos matches" icon={<Heart className="size-3.5 text-primary" />}>
+              {matchNotifs.map((n, i) => (
+                <div key={n.id} className="flex items-center gap-3 py-3">
+                  <div className="ring-match grid size-10 shrink-0 place-items-center rounded-full p-[2px]">
+                    <img src={avatarFor(i + 1)} alt="" className="size-full rounded-full object-cover" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold">{n.title}</p>
+                    <p className="text-xs text-muted-foreground">{n.content}</p>
+                  </div>
+                  <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">Match!</span>
                 </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold">{m.profile.name}</p>
-                  <p className="text-xs text-muted-foreground">{m.time}</p>
-                </div>
-                <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">
-                  Match!
-                </span>
-              </div>
-            ))}
-          </Section>
+              ))}
+            </Section>
+          )}
 
-          {/* Who liked your profile */}
           <Section title="Quem curtiu seu perfil" icon={<Sparkles className="size-3.5 text-gold" />}>
             <div className="flex items-center gap-2 py-3">
-              {likers.map((p, i) => (
-                <div key={i} className="relative shrink-0">
+              {dbProfiles.filter((p) => p.gender === "female").slice(0, 3).map((p, i) => (
+                <div key={p.id} className="relative shrink-0">
                   <img
-                    src={p.photo}
+                    src={p.avatar_url ?? ""}
                     alt={p.name}
                     className={`size-12 rounded-full object-cover ${isMale && !vip ? "blur-md brightness-50" : ""}`}
                   />
@@ -254,30 +237,24 @@ function NotificationsDrawer({ onClose }: { onClose: () => void }) {
                   )}
                 </div>
               ))}
-              {isMale && !vip && (
-                <div className="ml-1 text-xs font-semibold text-muted-foreground">
-                  +{Math.floor(3 + Math.random() * 5)} outros
-                </div>
-              )}
             </div>
+            {likeNotifs.map((n) => (
+              <p key={n.id} className="pb-1 text-xs text-muted-foreground">{n.content}</p>
+            ))}
             {isMale && !vip && (
               <button
-                onClick={() => {
-                  onClose();
-                  navigate({ to: "/loja" });
-                }}
+                onClick={() => { onClose(); navigate({ to: "/loja" }); }}
                 className="tap-scale mb-3 flex w-full items-center justify-center gap-2 rounded-full bg-gradient-gold py-2.5 text-xs font-extrabold text-gold-foreground shadow-gold"
               >
                 <Crown className="size-4" />
                 Desbloquear com moedas ou Seja VIP
               </button>
             )}
-            {(!isMale || vip) && (
-              <p className="pb-3 text-xs text-muted-foreground">
-                {likers.length} pessoas curtiram seu perfil nas últimas 24h.
-              </p>
-            )}
           </Section>
+
+          {notifications.length === 0 && (
+            <p className="py-4 text-center text-sm text-muted-foreground">Nenhuma notificação.</p>
+          )}
         </div>
       </div>
     </>
@@ -313,16 +290,25 @@ function Section({
 /* ------------------------------------------------------------------ */
 function NotificationBell() {
   const [open, setOpen] = useState(false);
+  const { unreadCount, markAllRead } = useNotifications();
+
+  function handleOpen() {
+    setOpen((v) => !v);
+    if (!open && unreadCount > 0) markAllRead();
+  }
 
   return (
     <>
       <button
-        onClick={() => setOpen((v) => !v)}
+        onClick={handleOpen}
         className="tap-scale relative grid size-9 place-items-center rounded-full border border-border bg-surface-2"
       >
         <Bell className="size-4 text-foreground" />
-        {/* Unread dot */}
-        <span className="absolute right-1.5 top-1.5 size-2 rounded-full bg-primary ring-2 ring-background" />
+        {unreadCount > 0 && (
+          <span className="absolute right-1 top-1 grid size-4 place-items-center rounded-full bg-primary text-[9px] font-extrabold text-primary-foreground ring-2 ring-background">
+            {unreadCount > 9 ? "9+" : unreadCount}
+          </span>
+        )}
       </button>
       {open && <NotificationsDrawer onClose={() => setOpen(false)} />}
     </>

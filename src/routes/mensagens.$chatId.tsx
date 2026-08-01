@@ -15,8 +15,12 @@ import {
   Video,
 } from "lucide-react";
 import { toast } from "sonner";
-import { gifts, initialMessages, profiles, type Message } from "@/lib/hotmatch/data";
+import { gifts, profiles as staticProfiles } from "@/lib/hotmatch/data";
 import { actions, useAppState } from "@/lib/hotmatch/store";
+import { useChat, type LocalMessage } from "@/hooks/use-chat";
+import { useProfiles } from "@/hooks/use-profiles";
+import { supabase } from "@/lib/supabase";
+import { DEMO_IDS, chatIdToProfileId } from "@/lib/hotmatch/demo";
 
 export const Route = createFileRoute("/mensagens/$chatId")({
   head: () => ({
@@ -33,10 +37,31 @@ export const Route = createFileRoute("/mensagens/$chatId")({
   component: Chat,
 });
 
+const AUTO_REPLIES = [
+  "Que delícia de mensagem 😘",
+  "Você me deixa tão animada!",
+  "rs adorei 😍",
+  "Sério mesmo? Conta mais 👀",
+];
+
 function Chat() {
   const { chatId } = useParams({ from: "/mensagens/$chatId" });
-  const profile = profiles.find((p) => p.id === chatId.replace("b", "")) ?? profiles[0];
-  const [messages, setMessages] = useState<Message[]>(initialMessages);
+  const { gender, unlocked } = useAppState();
+  const myId = DEMO_IDS[gender];
+
+  // Resolve partner from DB or fall back to static profile list
+  const partnerId = chatIdToProfileId(chatId);
+  const { profiles: dbProfiles } = useProfiles();
+  const dbPartner = dbProfiles.find((p) => p.id === partnerId);
+  const staticFallback =
+    staticProfiles.find((p) => p.id === chatId || p.id === chatId.replace("b", "")) ??
+    staticProfiles[0];
+
+  const partnerName   = dbPartner?.name     ?? staticFallback.name;
+  const partnerAvatar = dbPartner?.avatar_url ?? staticFallback.photo;
+
+  const { messages, loading, sendText, sendAudio, sendGift } = useChat(partnerId);
+
   const [text, setText] = useState("");
   const [giftOpen, setGiftOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -47,7 +72,6 @@ function Chat() {
   const [recordSecs, setRecordSecs] = useState(0);
   const recordTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
-  const { unlocked } = useAppState();
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -56,30 +80,20 @@ function Chat() {
   const now = () =>
     new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 
-  function send() {
+  async function handleSend() {
     if (!text.trim()) return;
-    setMessages((m) => [
-      ...m,
-      { id: crypto.randomUUID(), from: "me", kind: "text", text, time: now() },
-    ]);
+    const body = text;
     setText("");
-    setTimeout(() => {
-      const replies = [
-        "Que delícia de mensagem 😘",
-        "Você me deixa tão animada!",
-        "rs adorei 😍",
-        "Sério mesmo? Conta mais 👀",
-      ];
-      setMessages((m) => [
-        ...m,
-        {
-          id: crypto.randomUUID(),
-          from: "them",
-          kind: "text",
-          text: replies[Math.floor(Math.random() * replies.length)],
-          time: now(),
-        },
-      ]);
+    const { error } = await sendText(body);
+    if (error) toast.error("Erro ao enviar mensagem.");
+    // Simulated auto-reply stored in DB
+    setTimeout(async () => {
+      await supabase.from("chat_messages").insert({
+        sender_id: partnerId,
+        receiver_id: myId,
+        content: AUTO_REPLIES[Math.floor(Math.random() * AUTO_REPLIES.length)],
+        message_kind: "text",
+      });
     }, 900);
   }
 
@@ -89,29 +103,42 @@ function Chat() {
     recordTimer.current = setInterval(() => setRecordSecs((s) => s + 1), 1000);
   }
 
-  function stopRecording() {
+  async function stopRecording() {
     if (recordTimer.current) clearInterval(recordTimer.current);
     const secs = recordSecs + 1;
     setRecording(false);
     setRecordSecs(0);
     if (secs >= 1) {
-      setMessages((m) => [
-        ...m,
-        { id: crypto.randomUUID(), from: "me", kind: "audio", seconds: secs, time: now() },
-      ]);
-      setTimeout(() => {
-        setMessages((m) => [
-          ...m,
-          {
-            id: crypto.randomUUID(),
-            from: "them",
-            kind: "audio",
-            seconds: Math.floor(4 + Math.random() * 12),
-            time: now(),
-          },
-        ]);
+      await sendAudio(secs);
+      setTimeout(async () => {
+        await supabase.from("chat_messages").insert({
+          sender_id: partnerId,
+          receiver_id: myId,
+          message_kind: "audio",
+          audio_seconds: Math.floor(4 + Math.random() * 12),
+        });
       }, 1200);
     }
+  }
+
+  async function submitReport() {
+    if (!reportSubject.trim()) {
+      toast.error("Informe o assunto da denúncia.");
+      return;
+    }
+    await supabase.from("reports").insert({
+      reporter_id: myId,
+      reported_user_id: partnerId,
+      subject: reportSubject,
+      description: reportDesc,
+    });
+    setReportOpen(false);
+    setReportSubject("");
+    setReportDesc("");
+    toast("Denúncia enviada com sucesso.", {
+      description: "Nossa equipe analisará o caso. 🛡️",
+      className: "bg-white text-zinc-900 border border-zinc-200 shadow-xl rounded-2xl",
+    });
   }
 
   return (
@@ -121,14 +148,14 @@ function Chat() {
           <ArrowLeft className="size-5" />
         </Link>
         <img
-          src={profile.photo}
-          alt={profile.name}
+          src={partnerAvatar}
+          alt={partnerName}
           width={768}
           height={1024}
           className="size-10 rounded-full object-cover"
         />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-bold">{profile.name}</p>
+          <p className="truncate text-sm font-bold">{partnerName}</p>
           <p className="text-[11px] text-primary">online agora</p>
         </div>
         <button
@@ -143,7 +170,6 @@ function Chat() {
         >
           <Video className="size-4" />
         </button>
-        {/* Three-dots menu */}
         <div className="relative">
           <button
             onClick={() => setMenuOpen((v) => !v)}
@@ -156,10 +182,7 @@ function Chat() {
               <div className="fixed inset-0 z-[45]" onClick={() => setMenuOpen(false)} />
               <div className="absolute right-0 top-11 z-[46] min-w-[160px] overflow-hidden rounded-2xl border border-border bg-surface shadow-xl">
                 <button
-                  onClick={() => {
-                    setMenuOpen(false);
-                    setReportOpen(true);
-                  }}
+                  onClick={() => { setMenuOpen(false); setReportOpen(true); }}
                   className="flex w-full items-center gap-2 px-4 py-3 text-sm font-medium text-red-400 hover:bg-surface-2"
                 >
                   🚩 Denunciar perfil
@@ -171,6 +194,11 @@ function Chat() {
       </header>
 
       <div className="flex-1 space-y-3 px-4 py-4">
+        {loading && (
+          <div className="flex justify-center py-8">
+            <span className="text-sm text-muted-foreground">Carregando conversa…</span>
+          </div>
+        )}
         {messages.map((m) => (
           <Bubble
             key={m.id}
@@ -199,10 +227,7 @@ function Chat() {
               <span
                 key={i}
                 className="w-0.5 rounded-full bg-primary"
-                style={{
-                  height: `${6 + ((recordSecs * 3 + i * 7) % 16)}px`,
-                  transition: "height 0.15s ease",
-                }}
+                style={{ height: `${6 + ((recordSecs * 3 + i * 7) % 16)}px`, transition: "height 0.15s ease" }}
               />
             ))}
           </span>
@@ -226,13 +251,13 @@ function Chat() {
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && send()}
+          onKeyDown={(e) => e.key === "Enter" && handleSend()}
           placeholder="Mensagem..."
           className="min-w-0 flex-1 rounded-full border border-input bg-background px-4 py-2.5 text-sm outline-none focus:border-primary"
         />
         {text.trim() ? (
           <button
-            onClick={send}
+            onClick={handleSend}
             className="tap-scale grid size-10 shrink-0 place-items-center rounded-full bg-gradient-hot shadow-hot"
           >
             <Send className="size-5 text-primary-foreground" />
@@ -267,7 +292,7 @@ function Chat() {
           >
             <div className="border-b border-border px-5 py-4">
               <h2 className="text-base font-extrabold">Denunciar perfil</h2>
-              <p className="text-xs text-muted-foreground mt-0.5">Nossa equipe analisa em até 24h.</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">Nossa equipe analisa em até 24h.</p>
             </div>
             <div className="space-y-4 p-5">
               <div className="space-y-1.5">
@@ -298,16 +323,7 @@ function Chat() {
                   Cancelar
                 </button>
                 <button
-                  onClick={() => {
-                    setReportOpen(false);
-                    setReportSubject("");
-                    setReportDesc("");
-                    toast("Denúncia enviada com sucesso.", {
-                      description: "Nossa equipe analisará o caso. 🛡️",
-                      className:
-                        "bg-white text-zinc-900 border border-zinc-200 shadow-xl rounded-2xl",
-                    });
-                  }}
+                  onClick={submitReport}
                   className="tap-scale flex-1 rounded-full bg-gradient-hot py-3 text-sm font-extrabold text-primary-foreground shadow-hot"
                 >
                   Enviar Denúncia
@@ -330,7 +346,7 @@ function Chat() {
             <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-border" />
             <h2 className="text-lg font-extrabold">
               Enviar mimo para{" "}
-              <span className="text-gradient-gold">{profile.name}</span>
+              <span className="text-gradient-gold">{partnerName}</span>
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
               Presentes aumentam suas chances de resposta em até 4×.
@@ -339,32 +355,18 @@ function Chat() {
               {gifts.map((g) => (
                 <button
                   key={g.id}
-                  onClick={() => {
+                  onClick={async () => {
                     if (actions.spendCoins(g.price)) {
-                      setMessages((m) => [
-                        ...m,
-                        {
-                          id: crypto.randomUUID(),
-                          from: "me",
-                          kind: "gift",
-                          text: `${g.emoji} ${g.name}`,
-                          price: g.price,
-                          time: now(),
-                        },
-                      ]);
+                      await sendGift(g.emoji, g.name, g.price);
                       setGiftOpen(false);
                       toast(`${g.emoji} ${g.name} enviado!`, { description: `-${g.price} moedas` });
-                      setTimeout(() => {
-                        setMessages((m) => [
-                          ...m,
-                          {
-                            id: crypto.randomUUID(),
-                            from: "them",
-                            kind: "text",
-                            text: `Amooooo! Obrigada pelo ${g.name} ${g.emoji} 😍`,
-                            time: now(),
-                          },
-                        ]);
+                      setTimeout(async () => {
+                        await supabase.from("chat_messages").insert({
+                          sender_id: partnerId,
+                          receiver_id: myId,
+                          content: `Amooooo! Obrigada pelo ${g.name} ${g.emoji} 😍`,
+                          message_kind: "text",
+                        });
                       }, 1000);
                     } else {
                       toast.error("Saldo insuficiente");
@@ -393,7 +395,7 @@ function Bubble({
   unlocked,
   onUnlock,
 }: {
-  m: Message;
+  m: LocalMessage;
   unlocked: boolean;
   onUnlock: () => void;
 }) {
@@ -431,15 +433,12 @@ function Bubble({
               <span
                 key={i}
                 className={`w-[2.5px] rounded-full bg-current transition-opacity ${playing ? "opacity-100" : "opacity-60"}`}
-                style={{
-                  height: `${6 + ((i * 7) % 18)}px`,
-                  animationDuration: playing ? `${0.3 + (i % 5) * 0.1}s` : "0s",
-                }}
+                style={{ height: `${6 + ((i * 7) % 18)}px` }}
               />
             ))}
           </span>
           <span className="text-[11px] tabular-nums opacity-80">
-            0:{String(m.seconds).padStart(2, "0")}
+            0:{String(m.seconds ?? 0).padStart(2, "0")}
           </span>
         </div>
         <p className="mt-0.5 text-right text-[10px] opacity-60">{m.time}</p>
@@ -450,14 +449,18 @@ function Bubble({
     return (
       <div className="max-w-[78%] overflow-hidden rounded-3xl rounded-bl-lg border border-gold/30 bg-surface-2">
         <div className="relative aspect-square w-full">
-          <img
-            src={m.media}
-            alt="Mídia privada"
-            width={768}
-            height={1024}
-            loading="lazy"
-            className={`size-full object-cover ${unlocked ? "" : "scale-110 blur-2xl brightness-50"}`}
-          />
+          {m.media ? (
+            <img
+              src={m.media}
+              alt="Mídia privada"
+              width={768}
+              height={1024}
+              loading="lazy"
+              className={`size-full object-cover ${unlocked ? "" : "scale-110 blur-2xl brightness-50"}`}
+            />
+          ) : (
+            <div className={`size-full bg-surface-2 ${unlocked ? "" : "blur-2xl brightness-50"}`} />
+          )}
           {!unlocked && (
             <div className="absolute inset-0 grid place-items-center">
               <Lock className="size-8 text-gold" />

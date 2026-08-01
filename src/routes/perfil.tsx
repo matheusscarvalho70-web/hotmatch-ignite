@@ -23,8 +23,10 @@ import { EarningsDrawer } from "@/components/hotmatch/EarningsDrawer";
 import { VipModal } from "@/components/hotmatch/VipModal";
 import { StatsDrawer } from "@/components/hotmatch/StatsDrawer";
 import { SupportModal } from "@/components/hotmatch/SupportModal";
-import { photos, profiles } from "@/lib/hotmatch/data";
+import { photos } from "@/lib/hotmatch/data";
 import { actions, useAppState } from "@/lib/hotmatch/store";
+import { useProfile, useUserPhotos } from "@/hooks/use-profiles";
+import { DEMO_IDS } from "@/lib/hotmatch/demo";
 
 export const Route = createFileRoute("/perfil")({
   head: () => ({
@@ -60,9 +62,27 @@ type ModalKey = "edit" | "privacy" | "role" | "stats" | "support" | null;
 function ProfilePage() {
   const { gender, vip } = useAppState();
   const isCreator = gender === "female";
-  const me = profiles[isCreator ? 0 : 1];
+  const myId = DEMO_IDS[gender];
   const navigate = useNavigate();
   const [modal, setModal] = useState<ModalKey>(null);
+
+  const { profile, loading: profileLoading } = useProfile(myId);
+  const { publicPhotos, vipPhotos } = useUserPhotos(myId);
+
+  // Resolve display values — DB data when loaded, sensible defaults while loading
+  const displayName   = profile?.name       ?? (isCreator ? "Bianca" : "Carlos");
+  const displayAge    = profile?.age         ?? (isCreator ? 25 : 28);
+  const displayBio    = profile?.bio         ?? "";
+  const displayAvatar = profile?.avatar_url  ?? (isCreator ? photos.p1 : photos.p3);
+
+  // Gallery: use live photos when available, fall back to local asset arrays
+  const livePublic = publicPhotos.length > 0
+    ? publicPhotos.map((p) => p.photo_url)
+    : publicGallery;
+
+  const liveVip = vipPhotos.length > 0
+    ? vipPhotos.map((p) => ({ src: p.photo_url, price: p.coin_price }))
+    : vipGallery;
 
   return (
     <div className="min-h-screen pb-32">
@@ -70,7 +90,7 @@ function ProfilePage() {
 
       <div className="relative mx-4 h-32 overflow-hidden rounded-3xl">
         <img
-          src={isCreator ? photos.p1 : photos.p3}
+          src={displayAvatar}
           alt="Capa do perfil"
           width={768}
           height={1024}
@@ -80,18 +100,22 @@ function ProfilePage() {
       </div>
 
       <div className="-mt-10 flex flex-col items-center px-4">
-        <span className="ring-match grid size-24 place-items-center rounded-full p-[3px] shadow-gold">
-          <img
-            src={me.photo}
-            alt={me.name}
-            width={768}
-            height={1024}
-            className="size-full rounded-full object-cover"
-          />
-        </span>
+        {profileLoading ? (
+          <div className="size-24 rounded-full bg-surface-2 animate-pulse" />
+        ) : (
+          <span className="ring-match grid size-24 place-items-center rounded-full p-[3px] shadow-gold">
+            <img
+              src={displayAvatar}
+              alt={displayName}
+              width={768}
+              height={1024}
+              className="size-full rounded-full object-cover"
+            />
+          </span>
+        )}
         <div className="mt-2 flex items-center gap-1.5">
           <h2 className="text-xl font-extrabold">
-            {me.name}, {me.age}
+            {displayName}, {displayAge}
           </h2>
           <Crown className="size-4 text-gold" fill="currentColor" />
         </div>
@@ -104,11 +128,11 @@ function ProfilePage() {
         >
           {isCreator ? (vip ? "VIP Gold ativo" : "Criadora Verificada") : "Membro VIP"}
         </span>
-        <p className="mt-2 max-w-xs text-center text-sm text-muted-foreground">{me.bio}</p>
+        <p className="mt-2 max-w-xs text-center text-sm text-muted-foreground">{displayBio}</p>
       </div>
 
       {isCreator ? (
-        <CreatorProfile vip={vip} navigate={navigate} onMenu={setModal} />
+        <CreatorProfile vip={vip} navigate={navigate} onMenu={setModal} publicPhotos={livePublic} vipPhotos={liveVip} />
       ) : (
         <MaleProfile navigate={navigate} onMenu={setModal} />
       )}
@@ -131,10 +155,14 @@ function CreatorProfile({
   vip,
   navigate,
   onMenu,
+  publicPhotos,
+  vipPhotos,
 }: {
   vip: boolean;
   navigate: ReturnType<typeof useNavigate>;
   onMenu: (k: ModalKey) => void;
+  publicPhotos: string[];
+  vipPhotos: { src: string; price: number }[];
 }) {
   const [tab, setTab] = useState<"public" | "vip">("public");
 
@@ -163,7 +191,7 @@ function CreatorProfile({
 
       <div className="mt-4 grid grid-cols-3 gap-1.5 px-4">
         {tab === "public"
-          ? publicGallery.map((src, i) => (
+          ? publicPhotos.map((src, i) => (
               <img
                 key={i}
                 src={src}
@@ -174,7 +202,7 @@ function CreatorProfile({
                 className="aspect-square w-full rounded-xl object-cover"
               />
             ))
-          : vipGallery.map((m, i) => (
+          : vipPhotos.map((m, i) => (
               <div key={i} className="relative aspect-square overflow-hidden rounded-xl">
                 <img
                   src={m.src}
