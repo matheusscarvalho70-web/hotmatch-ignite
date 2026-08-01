@@ -2,7 +2,6 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import {
   BarChart2,
-  Check,
   ChevronRight,
   Coins,
   Crown,
@@ -14,11 +13,16 @@ import {
   LogOut,
   Settings,
   Shield,
-  UserCheck,
   Users,
 } from "lucide-react";
 import { toast } from "sonner";
 import { TopBar } from "@/components/hotmatch/TopBar";
+import { EditProfileModal } from "@/components/hotmatch/EditProfileModal";
+import { PrivacyModal } from "@/components/hotmatch/PrivacyModal";
+import { EarningsDrawer } from "@/components/hotmatch/EarningsDrawer";
+import { VipModal } from "@/components/hotmatch/VipModal";
+import { StatsDrawer } from "@/components/hotmatch/StatsDrawer";
+import { SupportModal } from "@/components/hotmatch/SupportModal";
 import { photos, profiles } from "@/lib/hotmatch/data";
 import { actions, useAppState } from "@/lib/hotmatch/store";
 
@@ -49,11 +53,14 @@ const vipGallery = [
   { src: photos.p2, price: 150 },
 ];
 
+type ModalKey = "edit" | "privacy" | "role" | "stats" | "support" | null;
+
 function ProfilePage() {
   const { gender, vip } = useAppState();
   const isCreator = gender === "female";
   const me = profiles[isCreator ? 0 : 1];
   const navigate = useNavigate();
+  const [modal, setModal] = useState<ModalKey>(null);
 
   return (
     <div className="min-h-screen pb-32">
@@ -99,10 +106,21 @@ function ProfilePage() {
       </div>
 
       {isCreator ? (
-        <CreatorProfile vip={vip} navigate={navigate} />
+        <CreatorProfile vip={vip} navigate={navigate} onMenu={setModal} />
       ) : (
-        <MaleProfile navigate={navigate} />
+        <MaleProfile navigate={navigate} onMenu={setModal} />
       )}
+
+      {/* Modals & drawers */}
+      <EditProfileModal open={modal === "edit"} onClose={() => setModal(null)} />
+      <PrivacyModal open={modal === "privacy"} onClose={() => setModal(null)} />
+      {isCreator ? (
+        <EarningsDrawer open={modal === "role"} onClose={() => setModal(null)} />
+      ) : (
+        <VipModal open={modal === "role"} onClose={() => setModal(null)} />
+      )}
+      <StatsDrawer open={modal === "stats"} onClose={() => setModal(null)} />
+      <SupportModal open={modal === "support"} onClose={() => setModal(null)} />
     </div>
   );
 }
@@ -110,9 +128,11 @@ function ProfilePage() {
 function CreatorProfile({
   vip,
   navigate,
+  onMenu,
 }: {
   vip: boolean;
   navigate: ReturnType<typeof useNavigate>;
+  onMenu: (k: ModalKey) => void;
 }) {
   const [tab, setTab] = useState<"public" | "vip">("public");
 
@@ -170,31 +190,25 @@ function CreatorProfile({
             ))}
       </div>
 
-      <SettingsMenu
-        vip={vip}
-        showEarnings
-        navigate={navigate}
-      />
+      <SettingsMenu showEarnings navigate={navigate} onMenu={onMenu} />
     </>
   );
 }
 
-function MaleProfile({ navigate }: { navigate: ReturnType<typeof useNavigate> }) {
+function MaleProfile({
+  navigate,
+  onMenu,
+}: {
+  navigate: ReturnType<typeof useNavigate>;
+  onMenu: (k: ModalKey) => void;
+}) {
   const { coins, followed } = useAppState();
 
   return (
     <>
       <div className="mt-5 grid grid-cols-2 gap-3 px-4">
-        <Stat
-          icon={<Heart className="size-4 text-primary" />}
-          label="Interações"
-          value="1.042"
-        />
-        <Stat
-          icon={<Users className="size-4 text-gold" />}
-          label="Seguindo"
-          value={String(followed.length)}
-        />
+        <Stat icon={<Heart className="size-4 text-primary" />} label="Interações" value="1.042" />
+        <Stat icon={<Users className="size-4 text-gold" />} label="Seguindo" value={String(followed.length)} />
       </div>
 
       <div className="mx-4 mt-5 flex items-center justify-between rounded-2xl border border-border bg-surface p-4">
@@ -227,7 +241,7 @@ function MaleProfile({ navigate }: { navigate: ReturnType<typeof useNavigate> })
         ))}
       </div>
 
-      <SettingsMenu navigate={navigate} />
+      <SettingsMenu navigate={navigate} onMenu={onMenu} />
     </>
   );
 }
@@ -235,25 +249,33 @@ function MaleProfile({ navigate }: { navigate: ReturnType<typeof useNavigate> })
 function SettingsMenu({
   navigate,
   showEarnings,
+  onMenu,
 }: {
   navigate: ReturnType<typeof useNavigate>;
   showEarnings?: boolean;
+  onMenu: (k: ModalKey) => void;
 }) {
-  const { vip } = useAppState();
-  const menuItems = [
-    { icon: Settings, label: "Editar perfil e fotos" },
-    { icon: Shield, label: "Privacidade e verificação" },
-    { icon: Crown, label: showEarnings ? "Dashboard de ganhos" : "Gerenciar assinatura VIP" },
-    { icon: BarChart2, label: "Estatísticas do perfil" },
-    { icon: HelpCircle, label: "Suporte HotMatch" },
+  const menuItems: { icon: React.ElementType; label: string; key: ModalKey }[] = [
+    { icon: Settings, label: "Editar perfil e fotos", key: "edit" },
+    { icon: Shield, label: "Privacidade e verificação", key: "privacy" },
+    {
+      icon: Crown,
+      label: showEarnings ? "Dashboard de ganhos" : "Gerenciar assinatura VIP",
+      key: "role",
+    },
+    { icon: BarChart2, label: "Estatísticas do perfil", key: "stats" },
+    { icon: HelpCircle, label: "Suporte HotMatch", key: "support" },
   ];
 
   return (
     <>
       <ul className="mx-4 mt-6 overflow-hidden rounded-3xl border border-border bg-surface">
-        {menuItems.map(({ icon: Icon, label }) => (
-          <li key={label}>
-            <button className="flex w-full items-center gap-3 border-b border-border px-4 py-3.5 text-left last:border-0 active:bg-surface-2">
+        {menuItems.map(({ icon: Icon, label, key }) => (
+          <li key={key}>
+            <button
+              onClick={() => onMenu(key)}
+              className="flex w-full items-center gap-3 border-b border-border px-4 py-3.5 text-left last:border-0 active:bg-surface-2 transition-colors"
+            >
               <Icon className="size-4 shrink-0 text-muted-foreground" />
               <span className="min-w-0 flex-1 truncate text-sm font-medium">{label}</span>
               <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
@@ -265,7 +287,9 @@ function SettingsMenu({
       <button
         onClick={() => {
           actions.signOut();
-          toast.success("Você saiu da conta");
+          toast("Você saiu da sua conta.", {
+            className: "bg-white text-zinc-900 border border-zinc-200 shadow-xl rounded-2xl",
+          });
           navigate({ to: "/bem-vindo" });
         }}
         className="tap-scale mx-4 mt-4 flex w-[calc(100%-2rem)] items-center justify-center gap-2 rounded-full border border-border bg-surface py-3 text-sm font-semibold text-muted-foreground"
