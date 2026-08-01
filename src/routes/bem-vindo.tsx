@@ -351,29 +351,82 @@ function SignupFlow({
         )}
 
         {step === 2 && (
-          <div className="mt-4 space-y-4">
-            <h2 className="text-lg font-extrabold tracking-tight">Fotos públicas</h2>
-            <p className="text-xs text-muted-foreground">
-              Adicione até 4 fotos que aparecem no seu perfil público.
-            </p>
-            <div className="grid grid-cols-4 gap-2">
-              {[0, 1, 2, 3].map((i) => {
-                const filled = photos.includes(i);
-                return (
-                  <button
-                    key={i}
-                    onClick={() => setPhotos((p) => (filled ? p.filter((x) => x !== i) : [...p, i]))}
-                    className={cn(
-                      "tap-scale grid aspect-[3/4] place-items-center rounded-2xl border border-dashed",
-                      filled
-                        ? "border-gold/50 bg-gold/10 text-gold"
-                        : "border-border bg-surface-2 text-muted-foreground",
-                    )}
-                  >
-                    {filled ? <Check className="size-5" /> : <Plus className="size-5" />}
-                  </button>
-                );
-              })}
+          <div className="mt-4 space-y-5">
+            <h2 className="text-lg font-extrabold tracking-tight">Fotos do Perfil</h2>
+
+            {/* Circular avatar — mandatory */}
+            <div className="flex flex-col items-center gap-3">
+              <p className="text-xs font-semibold text-muted-foreground">
+                Foto de perfil <span className="text-primary">*obrigatória</span>
+              </p>
+              <button
+                onClick={() =>
+                  setPhotos((p) =>
+                    p.includes(-1) ? p.filter((x) => x !== -1) : [...p, -1],
+                  )
+                }
+                className={cn(
+                  "tap-scale relative grid size-32 place-items-center rounded-full border-2 border-dashed transition-all",
+                  photos.includes(-1)
+                    ? "border-gold bg-gold/10 shadow-gold"
+                    : "border-border bg-surface-2",
+                )}
+              >
+                {photos.includes(-1) ? (
+                  <>
+                    <span className="grid size-28 place-items-center rounded-full bg-gold/20">
+                      <Check className="size-8 text-gold" />
+                    </span>
+                    <span className="absolute -bottom-0.5 -right-0.5 grid size-8 place-items-center rounded-full bg-gradient-hot shadow-hot">
+                      <Check className="size-4 text-primary-foreground" />
+                    </span>
+                  </>
+                ) : (
+                  <span className="grid size-28 place-items-center rounded-full bg-surface-2">
+                    <Camera className="size-9 text-muted-foreground" />
+                  </span>
+                )}
+              </button>
+              <p className="max-w-[16rem] text-center text-[11px] text-muted-foreground">
+                Essa foto será usada para validar seu perfil. Deve mostrar seu rosto claramente.
+              </p>
+            </div>
+
+            {/* 3 optional gallery slots */}
+            <div>
+              <p className="mb-2 text-xs font-semibold text-muted-foreground">
+                Galeria pública <span className="text-muted-foreground/60">(opcional)</span>
+              </p>
+              <div className="grid grid-cols-3 gap-2">
+                {[0, 1, 2].map((i) => {
+                  const filled = photos.includes(i);
+                  return (
+                    <button
+                      key={i}
+                      onClick={() =>
+                        setPhotos((p) =>
+                          filled ? p.filter((x) => x !== i) : [...p, i],
+                        )
+                      }
+                      className={cn(
+                        "tap-scale grid aspect-square place-items-center rounded-2xl border border-dashed transition-all",
+                        filled
+                          ? "border-gold/50 bg-gold/10 text-gold"
+                          : "border-border bg-surface-2 text-muted-foreground",
+                      )}
+                    >
+                      {filled ? (
+                        <Check className="size-5" />
+                      ) : (
+                        <Plus className="size-5" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-1.5 text-[11px] text-muted-foreground">
+                Adicione até 3 fotos públicas para aumentar seu engajamento.
+              </p>
             </div>
           </div>
         )}
@@ -449,7 +502,8 @@ function SignupFlow({
 
         <Button
           onClick={next}
-          className="mt-5 h-12 w-full rounded-full bg-gradient-hot text-sm font-bold text-primary-foreground shadow-hot"
+          disabled={step === 2 && !photos.includes(-1)}
+          className="mt-5 h-12 w-full rounded-full bg-gradient-hot text-sm font-bold text-primary-foreground shadow-hot disabled:opacity-40"
         >
           {step >= totalSteps ? "Criar minha conta" : "Continuar"}
           <ArrowRight className="size-4" />

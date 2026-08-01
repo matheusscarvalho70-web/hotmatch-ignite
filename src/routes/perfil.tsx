@@ -1,8 +1,10 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { toast } from "sonner";
 import {
+  BarChart2,
+  Check,
   ChevronRight,
+  Coins,
   Crown,
   Eye,
   Gift,
@@ -12,7 +14,10 @@ import {
   LogOut,
   Settings,
   Shield,
+  UserCheck,
+  Users,
 } from "lucide-react";
+import { toast } from "sonner";
 import { TopBar } from "@/components/hotmatch/TopBar";
 import { photos, profiles } from "@/lib/hotmatch/data";
 import { actions, useAppState } from "@/lib/hotmatch/store";
@@ -45,9 +50,9 @@ const vipGallery = [
 ];
 
 function ProfilePage() {
-  const [tab, setTab] = useState<"public" | "vip">("public");
-  const { vip } = useAppState();
-  const me = profiles[0];
+  const { gender, vip } = useAppState();
+  const isCreator = gender === "female";
+  const me = profiles[isCreator ? 0 : 1];
   const navigate = useNavigate();
 
   return (
@@ -56,7 +61,7 @@ function ProfilePage() {
 
       <div className="relative mx-4 h-32 overflow-hidden rounded-3xl">
         <img
-          src={photos.p1}
+          src={isCreator ? photos.p1 : photos.p3}
           alt="Capa do perfil"
           width={768}
           height={1024}
@@ -81,12 +86,38 @@ function ProfilePage() {
           </h2>
           <Crown className="size-4 text-gold" fill="currentColor" />
         </div>
-        <span className="mt-1 rounded-full border border-gold/40 bg-gold/10 px-3 py-1 text-[11px] font-bold text-gold">
-          {vip ? "VIP Gold ativo" : "Criadora Verificada"}
+        <span
+          className={`mt-1 rounded-full border px-3 py-1 text-[11px] font-bold ${
+            isCreator
+              ? "border-gold/40 bg-gold/10 text-gold"
+              : "border-primary/30 bg-primary/10 text-primary"
+          }`}
+        >
+          {isCreator ? (vip ? "VIP Gold ativo" : "Criadora Verificada") : "Membro VIP"}
         </span>
         <p className="mt-2 max-w-xs text-center text-sm text-muted-foreground">{me.bio}</p>
       </div>
 
+      {isCreator ? (
+        <CreatorProfile vip={vip} navigate={navigate} />
+      ) : (
+        <MaleProfile navigate={navigate} />
+      )}
+    </div>
+  );
+}
+
+function CreatorProfile({
+  vip,
+  navigate,
+}: {
+  vip: boolean;
+  navigate: ReturnType<typeof useNavigate>;
+}) {
+  const [tab, setTab] = useState<"public" | "vip">("public");
+
+  return (
+    <>
       <div className="mt-5 grid grid-cols-3 gap-3 px-4">
         <Stat icon={<Eye className="size-4 text-foreground/70" />} label="Visualizações" value="12,4k" />
         <Stat icon={<Heart className="size-4 text-primary" />} label="Curtidas" value="3.208" />
@@ -139,13 +170,88 @@ function ProfilePage() {
             ))}
       </div>
 
+      <SettingsMenu
+        vip={vip}
+        showEarnings
+        navigate={navigate}
+      />
+    </>
+  );
+}
+
+function MaleProfile({ navigate }: { navigate: ReturnType<typeof useNavigate> }) {
+  const { coins, followed } = useAppState();
+
+  return (
+    <>
+      <div className="mt-5 grid grid-cols-2 gap-3 px-4">
+        <Stat
+          icon={<Heart className="size-4 text-primary" />}
+          label="Interações"
+          value="1.042"
+        />
+        <Stat
+          icon={<Users className="size-4 text-gold" />}
+          label="Seguindo"
+          value={String(followed.length)}
+        />
+      </div>
+
+      <div className="mx-4 mt-5 flex items-center justify-between rounded-2xl border border-border bg-surface p-4">
+        <div className="flex items-center gap-2">
+          <Coins className="size-5 text-gold" />
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground">Saldo de moedas</p>
+            <p className="text-lg font-extrabold text-gradient-gold">{coins}</p>
+          </div>
+        </div>
+        <button
+          onClick={() => navigate({ to: "/loja" })}
+          className="tap-scale rounded-full bg-gradient-gold px-4 py-2 text-xs font-bold text-gold-foreground shadow-gold"
+        >
+          Recarregar
+        </button>
+      </div>
+
+      <div className="mt-5 grid grid-cols-2 gap-1.5 px-4">
+        {publicGallery.slice(0, 4).map((src, i) => (
+          <img
+            key={i}
+            src={src}
+            alt={`Foto ${i + 1}`}
+            width={768}
+            height={1024}
+            loading="lazy"
+            className="aspect-square w-full rounded-xl object-cover"
+          />
+        ))}
+      </div>
+
+      <SettingsMenu navigate={navigate} />
+    </>
+  );
+}
+
+function SettingsMenu({
+  navigate,
+  showEarnings,
+}: {
+  navigate: ReturnType<typeof useNavigate>;
+  showEarnings?: boolean;
+}) {
+  const { vip } = useAppState();
+  const menuItems = [
+    { icon: Settings, label: "Editar perfil e fotos" },
+    { icon: Shield, label: "Privacidade e verificação" },
+    { icon: Crown, label: showEarnings ? "Dashboard de ganhos" : "Gerenciar assinatura VIP" },
+    { icon: BarChart2, label: "Estatísticas do perfil" },
+    { icon: HelpCircle, label: "Suporte HotMatch" },
+  ];
+
+  return (
+    <>
       <ul className="mx-4 mt-6 overflow-hidden rounded-3xl border border-border bg-surface">
-        {[
-          { icon: Settings, label: "Editar perfil e fotos" },
-          { icon: Shield, label: "Privacidade e verificação" },
-          { icon: Crown, label: "Gerenciar assinatura VIP" },
-          { icon: HelpCircle, label: "Suporte HotMatch" },
-        ].map(({ icon: Icon, label }) => (
+        {menuItems.map(({ icon: Icon, label }) => (
           <li key={label}>
             <button className="flex w-full items-center gap-3 border-b border-border px-4 py-3.5 text-left last:border-0 active:bg-surface-2">
               <Icon className="size-4 shrink-0 text-muted-foreground" />
@@ -167,7 +273,7 @@ function ProfilePage() {
         <LogOut className="size-4" />
         Sair da conta / Alternar conta
       </button>
-    </div>
+    </>
   );
 }
 

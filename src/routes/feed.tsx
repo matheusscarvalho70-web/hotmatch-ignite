@@ -1,9 +1,21 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
-import { Crown, Heart, Lock, MessageCircle, Play, Plus, Send, Coins, Upload } from "lucide-react";
+import {
+  Check,
+  Coins,
+  Crown,
+  Heart,
+  Lock,
+  MessageCircle,
+  Play,
+  Plus,
+  Send,
+  Upload,
+  UserPlus,
+} from "lucide-react";
 import { toast } from "sonner";
 import { TopBar } from "@/components/hotmatch/TopBar";
-import { posts, type Post } from "@/lib/hotmatch/data";
+import { posts, profiles, type Post } from "@/lib/hotmatch/data";
 import { actions, useAppState } from "@/lib/hotmatch/store";
 
 export const Route = createFileRoute("/feed")({
@@ -25,36 +37,113 @@ export const Route = createFileRoute("/feed")({
   component: Feed,
 });
 
+type FeedTab = "geral" | "following" | "meus";
+
 function Feed() {
-  const [open, setOpen] = useState(false);
+  const { gender, followed } = useAppState();
+  const isCreator = gender === "female";
+
+  const tabs: { id: FeedTab; label: string }[] = isCreator
+    ? [
+        { id: "geral", label: "Feed Geral" },
+        { id: "meus", label: "Meus Posts" },
+      ]
+    : [
+        { id: "geral", label: "Feed Geral" },
+        { id: "following", label: "Criadoras que Sigo" },
+      ];
+
+  const [activeTab, setActiveTab] = useState<FeedTab>(tabs[0].id);
+  const [postOpen, setPostOpen] = useState(false);
+  const [likedIds, setLikedIds] = useState<string[]>([]);
+
+  const displayPosts = (() => {
+    const allPosts = [...posts, ...posts.map((p) => ({ ...p, id: p.id + "-2" }))];
+    if (activeTab === "following") {
+      const followedPosts = allPosts.filter((p) => followed.includes(p.author.id));
+      return followedPosts;
+    }
+    if (activeTab === "meus") {
+      return allPosts.filter((p) => p.author.id === profiles[0].id);
+    }
+    return allPosts;
+  })();
+
   return (
     <div className="min-h-screen pb-32">
       <TopBar title="Feed Exclusivo" />
-      <div className="space-y-5 px-4">
-        {posts.map((p) => (
-          <PostCard key={p.id} post={p} />
-        ))}
-        {posts.map((p) => (
-          <PostCard key={p.id + "-2"} post={{ ...p, id: p.id + "-2" }} />
+
+      {/* Tab bar */}
+      <div className="sticky top-[3.5rem] z-30 mx-4 mb-4 flex rounded-full border border-border bg-surface p-1">
+        {tabs.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setActiveTab(t.id)}
+            className={`flex-1 rounded-full py-2 text-xs font-bold transition-all ${
+              activeTab === t.id
+                ? "bg-gradient-hot text-primary-foreground shadow-hot"
+                : "text-muted-foreground"
+            }`}
+          >
+            {t.label}
+          </button>
         ))}
       </div>
 
-      <button
-        onClick={() => setOpen(true)}
-        className="tap-scale fixed bottom-28 right-[max(1rem,calc(50%-14rem))] z-40 flex items-center gap-2 rounded-full bg-gradient-gold px-4 py-3 shadow-gold"
-      >
-        <Plus className="size-5 text-gold-foreground" />
-        <span className="text-sm font-bold text-gold-foreground">Postar Mídia VIP</span>
-      </button>
+      <div className="space-y-5 px-4">
+        {displayPosts.length === 0 ? (
+          <div className="flex flex-col items-center gap-3 py-16 text-center">
+            <div className="grid size-16 place-items-center rounded-full bg-surface-2">
+              <UserPlus className="size-7 text-muted-foreground" />
+            </div>
+            <p className="text-sm font-semibold">Você ainda não segue nenhuma criadora</p>
+            <p className="max-w-xs text-xs text-muted-foreground">
+              Siga suas criadoras favoritas no feed geral para ver os posts delas aqui.
+            </p>
+          </div>
+        ) : (
+          displayPosts.map((p) => (
+            <PostCard
+              key={p.id}
+              post={p}
+              liked={likedIds.includes(p.id)}
+              onLike={() =>
+                setLikedIds((ids) =>
+                  ids.includes(p.id) ? ids.filter((x) => x !== p.id) : [...ids, p.id],
+                )
+              }
+            />
+          ))
+        )}
+      </div>
 
-      {open && <PostModal onClose={() => setOpen(false)} />}
+      {isCreator && (
+        <button
+          onClick={() => setPostOpen(true)}
+          className="tap-scale fixed bottom-28 right-[max(1rem,calc(50%-14rem))] z-40 flex items-center gap-2 rounded-full bg-gradient-gold px-4 py-3 shadow-gold"
+        >
+          <Plus className="size-5 text-gold-foreground" />
+          <span className="text-sm font-bold text-gold-foreground">Postar Mídia VIP</span>
+        </button>
+      )}
+
+      {postOpen && <PostModal onClose={() => setPostOpen(false)} />}
     </div>
   );
 }
 
-function PostCard({ post }: { post: Post }) {
-  const { unlocked } = useAppState();
+function PostCard({
+  post,
+  liked,
+  onLike,
+}: {
+  post: Post;
+  liked: boolean;
+  onLike: () => void;
+}) {
+  const { unlocked, followed } = useAppState();
   const isLocked = post.locked && !unlocked.includes(post.id);
+  const isFollowing = followed.includes(post.author.id);
 
   return (
     <article className="overflow-hidden rounded-3xl border border-border bg-surface shadow-card-premium">
@@ -72,14 +161,38 @@ function PostCard({ post }: { post: Post }) {
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1">
             <p className="truncate text-sm font-bold">{post.author.name}</p>
-            {post.author.creator && <Crown className="size-3.5 shrink-0 text-gold" fill="currentColor" />}
+            {post.author.creator && (
+              <Crown className="size-3.5 shrink-0 text-gold" fill="currentColor" />
+            )}
           </div>
           <p className="text-xs text-muted-foreground">
             {post.time} · {post.type}
           </p>
         </div>
-        <button className="tap-scale rounded-full bg-gradient-hot px-3 py-1.5 text-xs font-bold text-primary-foreground">
-          Seguir
+        <button
+          onClick={() => {
+            if (isFollowing) {
+              actions.unfollow(post.author.id);
+              toast(`Você deixou de seguir ${post.author.name}`);
+            } else {
+              actions.follow(post.author.id);
+              toast(`Seguindo ${post.author.name} 💗`);
+            }
+          }}
+          className={`tap-scale flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition-all ${
+            isFollowing
+              ? "border border-border bg-surface-2 text-foreground"
+              : "bg-gradient-hot text-primary-foreground"
+          }`}
+        >
+          {isFollowing ? (
+            <>
+              <Check className="size-3" />
+              Seguindo
+            </>
+          ) : (
+            "Seguir"
+          )}
         </button>
       </header>
 
@@ -126,9 +239,12 @@ function PostCard({ post }: { post: Post }) {
 
       <footer className="space-y-2 p-3">
         <div className="flex items-center gap-4">
-          <button className="tap-scale flex items-center gap-1.5 text-sm text-muted-foreground">
-            <Heart className="size-5 text-primary" fill="currentColor" />
-            <span className="font-semibold tabular-nums">{post.likes}</span>
+          <button onClick={onLike} className="tap-scale flex items-center gap-1.5 text-sm text-muted-foreground">
+            <Heart
+              className={`size-5 transition-colors ${liked ? "text-primary" : "text-muted-foreground"}`}
+              fill={liked ? "currentColor" : "none"}
+            />
+            <span className="font-semibold tabular-nums">{post.likes + (liked ? 1 : 0)}</span>
           </button>
           <button className="tap-scale flex items-center gap-1.5 text-sm text-muted-foreground">
             <MessageCircle className="size-5" />

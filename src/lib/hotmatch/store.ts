@@ -11,6 +11,7 @@ export type AppState = {
   earnings: number;
   unlocked: string[];
   vip: boolean;
+  followed: string[];
 };
 
 let state: AppState = {
@@ -20,6 +21,7 @@ let state: AppState = {
   earnings: 2480.5,
   unlocked: [],
   vip: false,
+  followed: [],
 };
 
 const listeners = new Set<() => void>();
@@ -75,8 +77,25 @@ export const actions = {
     state = { ...state, earnings: Math.max(0, state.earnings - amount) };
     emit();
   },
+  follow(profileId: string) {
+    if (state.followed.includes(profileId)) return;
+    state = { ...state, followed: [...state.followed, profileId] };
+    emit();
+  },
+  unfollow(profileId: string) {
+    state = { ...state, followed: state.followed.filter((id) => id !== profileId) };
+    emit();
+  },
   signOut() {
-    state = { coins: 320, gender: "male", role: "buyer", earnings: 2480.5, unlocked: [], vip: false };
+    state = {
+      coins: 320,
+      gender: "male",
+      role: "buyer",
+      earnings: 2480.5,
+      unlocked: [],
+      vip: false,
+      followed: [],
+    };
     emit();
   },
 };

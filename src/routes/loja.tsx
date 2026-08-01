@@ -1,6 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
-import { ArrowDownToLine, Check, Coins, Crown, Sparkles, TrendingUp, Zap } from "lucide-react";
+import {
+  ArrowDownToLine,
+  Check,
+  Coins,
+  Crown,
+  Sparkles,
+  TrendingUp,
+  Zap,
+} from "lucide-react";
 import { toast } from "sonner";
 import { TopBar } from "@/components/hotmatch/TopBar";
 import { coinPacks, salesHistory } from "@/lib/hotmatch/data";
@@ -26,26 +34,13 @@ export const Route = createFileRoute("/loja")({
 });
 
 function Store() {
-  const { role } = useAppState();
+  const { gender } = useAppState();
+
   return (
     <div className="min-h-screen pb-32">
-      <TopBar title="Loja & Carteira" />
+      <TopBar title={gender === "female" ? "Carteira Criadora" : "Loja & VIP"} />
       <div className="px-4">
-        <div className="mb-5 flex rounded-full border border-border bg-surface p-1">
-          <button
-            onClick={() => role !== "buyer" && actions.toggleRole()}
-            className={`flex-1 rounded-full py-2 text-xs font-bold transition ${role === "buyer" ? "bg-gradient-hot text-primary-foreground shadow-hot" : "text-muted-foreground"}`}
-          >
-            Comprar moedas
-          </button>
-          <button
-            onClick={() => role !== "creator" && actions.toggleRole()}
-            className={`flex-1 rounded-full py-2 text-xs font-bold transition ${role === "creator" ? "bg-gradient-gold text-gold-foreground shadow-gold" : "text-muted-foreground"}`}
-          >
-            Painel criadora
-          </button>
-        </div>
-        {role === "buyer" ? <BuyerView /> : <CreatorView />}
+        {gender === "female" ? <CreatorView /> : <BuyerView />}
       </div>
     </div>
   );
@@ -70,6 +65,12 @@ function BuyerView() {
         <p className="mt-2 text-xs text-muted-foreground">
           Use para desbloquear mídias, enviar mimos e Super Likes.
         </p>
+        {vip && (
+          <div className="mt-2 flex items-center gap-1.5 text-xs font-bold text-gold">
+            <Crown className="size-3.5" fill="currentColor" />
+            VIP Gold ativo
+          </div>
+        )}
       </section>
 
       <h2 className="mb-3 mt-6 text-sm font-extrabold">Recarga rápida via Pix</h2>
