@@ -71,32 +71,54 @@ export function useUserPhotos(userId: string) {
   return { publicPhotos, vipPhotos, loading };
 }
 
-/** On mount: re-hydrates store from DB if a profileId is saved in localStorage. */
-export function useSessionBootstrap() {
-  const { profileId } = useAppState();
+async function hydrateFromDb(userId: string) {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("id", userId)
+    .maybeSingle();
+  if (error || !data) return false;
+  actions.setProfile({
+    profileId: data.id,
+    gender: data.gender as "male" | "female",
+    name: data.name,
+    avatarUrl: data.avatar_url,
+    coins: data.coin_balance,
+    earnings: Number(data.earnings_brl),
+    xp: data.xp ?? 0,
+    level: data.level ?? "bronze",
+    vip: data.is_verified ?? false,
+  });
+  return true;
+}
 
+/**
+ * On mount: checks the current Supabase Auth session and re-hydrates the store.
+ * Listens to onAuthStateChange for sign-in/sign-out events throughout the session.
+ */
+export function useSessionBootstrap() {
   useEffect(() => {
-    if (!profileId) return;
-    supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", profileId)
-      .maybeSingle()
-      .then(({ data, error }) => {
-        if (error || !data) { actions.signOut(); return; }
-        actions.setProfile({
-          profileId: data.id,
-          gender: data.gender as "male" | "female",
-          name: data.name,
-          avatarUrl: data.avatar_url,
-          coins: data.coin_balance,
-          earnings: Number(data.earnings_brl),
-          xp: data.xp ?? 0,
-          level: data.level ?? "bronze",
-          vip: false,
-        });
-      });
-  // intentionally run once on mount
+    // 1. Sync store with the current auth session on mount
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        hydrateFromDb(session.user.id);
+      }
+    });
+
+    // 2. React to future auth state changes
+    // IMPORTANT: async work is wrapped in an IIFE to avoid the onAuthStateChange deadlock
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      (async () => {
+        if (event === "SIGNED_OUT") {
+          actions.signOut();
+        } else if (event === "SIGNED_IN" && session?.user) {
+          await hydrateFromDb(session.user.id);
+        }
+      })();
+    });
+
+    return () => subscription.unsubscribe();
+  // Run once on mount only
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 }

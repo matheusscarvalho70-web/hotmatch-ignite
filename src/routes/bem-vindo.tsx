@@ -6,6 +6,8 @@ import {
   Camera,
   Check,
   Crown,
+  Eye,
+  EyeOff,
   Lock,
   Plus,
   ShieldCheck,
@@ -38,6 +40,19 @@ export const Route = createFileRoute("/bem-vindo")({
 
 type Gender = "male" | "female";
 
+/* ─── returns the REAL age — no clamping ─── */
+function calcAge(dob: string): number {
+  const birth = new Date(dob);
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const m = today.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+  return age;
+}
+
+function delay(ms: number) { return new Promise<void>((r) => setTimeout(r, ms)); }
+
+/* ────────────────────────── Page ────────────────────────── */
 function WelcomePage() {
   const [gender, setGender] = useState<Gender | null>(null);
   const [signupOpen, setSignupOpen] = useState(false);
@@ -132,6 +147,7 @@ function WelcomePage() {
   );
 }
 
+/* ────────────────────────── Choice card ────────────────────────── */
 function ChoiceCard({ onClick, icon, title, desc, chip, tone, genderIcon }: {
   onClick: () => void; icon: React.ReactNode; title: string; desc: string;
   chip: string; tone: "hot" | "gold"; genderIcon: React.ReactNode;
@@ -165,43 +181,64 @@ function ChoiceCard({ onClick, icon, title, desc, chip, tone, genderIcon }: {
   );
 }
 
-/* ─────────────────────────── Login ─────────────────────────── */
+/* ────────────────────────── Login dialog ────────────────────────── */
 function LoginDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
   const navigate = useNavigate();
-  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) { toast.error("Informe seu nome."); return; }
+    if (!email.trim()) { toast.error("Informe seu e-mail."); return; }
+    if (!password) { toast.error("Informe sua senha."); return; }
     setLoading(true);
 
-    const { data, error } = await supabase
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+      email: email.trim().toLowerCase(),
+      password,
+    });
+
+    if (authError || !authData.user) {
+      setLoading(false);
+      toast.error(
+        authError?.message === "Invalid login credentials"
+          ? "E-mail ou senha incorretos."
+          : (authError?.message ?? "Erro ao entrar. Tente novamente."),
+      );
+      return;
+    }
+
+    const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("*")
-      .ilike("name", `%${name.trim()}%`)
+      .eq("id", authData.user.id)
       .maybeSingle();
 
     setLoading(false);
 
-    if (error || !data) {
-      toast.error("Conta não encontrada. Crie sua conta primeiro.");
+    if (profileError || !profile) {
+      toast.error("Perfil não encontrado. Entre em contato com o suporte.");
+      await supabase.auth.signOut();
       return;
     }
 
     actions.setProfile({
-      profileId: data.id,
-      gender: data.gender as "male" | "female",
-      name: data.name,
-      avatarUrl: data.avatar_url,
-      coins: data.coin_balance,
-      earnings: Number(data.earnings_brl),
-      vip: data.is_verified ?? false,
+      profileId: profile.id,
+      gender: profile.gender as Gender,
+      name: profile.name,
+      avatarUrl: profile.avatar_url,
+      coins: profile.coin_balance,
+      earnings: Number(profile.earnings_brl),
+      xp: profile.xp ?? 0,
+      level: profile.level ?? "bronze",
+      vip: profile.is_verified ?? false,
     });
 
-    registerPush(data.id).catch((e) => console.warn("[OneSignal] registerPush on login failed:", e));
+    registerPush(profile.id).catch(() => {});
     onOpenChange(false);
-    toast.success(`Bem-vindo de volta, ${data.name}! 🔥`);
+    toast.success(`Bem-vindo de volta, ${profile.name}! 🔥`);
     navigate({ to: "/" });
   };
 
@@ -216,13 +253,27 @@ function LoginDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: 
           </span>
         </div>
         <form onSubmit={submit} className="mt-4 space-y-3">
-          <Field label="Nome" placeholder="Seu nome no HotMatch" value={name} onChange={(e) => setName(e.target.value)} />
+          <Field
+            label="E-mail"
+            type="email"
+            autoComplete="email"
+            placeholder="seu@email.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+          <PasswordField
+            label="Senha"
+            value={password}
+            onChange={setPassword}
+            show={showPw}
+            onToggle={() => setShowPw((v) => !v)}
+          />
           <Button
             type="submit"
             disabled={loading}
             className="mt-2 h-12 w-full rounded-full bg-gradient-hot text-sm font-bold text-primary-foreground shadow-hot disabled:opacity-50"
           >
-            {loading ? "Buscando conta..." : "Entrar na minha conta"}
+            {loading ? "Entrando..." : "Entrar na minha conta"}
             <ArrowRight className="size-4" />
           </Button>
         </form>
@@ -231,18 +282,7 @@ function LoginDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: 
   );
 }
 
-/* ─────────────────────────── Signup Flow ─────────────────────────── */
-function calcAge(dob: string): number {
-  const birth = new Date(dob);
-  const today = new Date();
-  let age = today.getFullYear() - birth.getFullYear();
-  const m = today.getMonth() - birth.getMonth();
-  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
-  return age < 18 ? 18 : age;
-}
-
-function delay(ms: number) { return new Promise<void>((r) => setTimeout(r, ms)); }
-
+/* ────────────────────────── Signup flow ────────────────────────── */
 function SignupFlow({ open, onOpenChange, gender }: {
   open: boolean; onOpenChange: (v: boolean) => void; gender: Gender;
 }) {
@@ -253,17 +293,27 @@ function SignupFlow({ open, onOpenChange, gender }: {
   const [step, setStep] = useState(1);
   const [saving, setSaving] = useState(false);
 
-  // Step 1
+  /* Step 1 */
   const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPw, setShowPw] = useState(false);
   const [dob, setDob] = useState("");
   const [bio, setBio] = useState("");
 
-  // Step 2 — real avatar file
+  /* computed age — updates every keystroke on dob */
+  const computedAge = dob ? calcAge(dob) : null;
+  const ageError =
+    computedAge !== null && computedAge < 18
+      ? "Você precisa ter no mínimo 18 anos para se cadastrar."
+      : null;
+
+  /* Step 2 — avatar */
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
-  // Step 3 — biometrics
+  /* Step 3 — biometrics */
   const [camPhase, setCamPhase] = useState<"idle" | "active" | "scanning" | "done">("idle");
   const [scanMsg, setScanMsg] = useState("");
   const [scanPct, setScanPct] = useState(0);
@@ -273,19 +323,20 @@ function SignupFlow({ open, onOpenChange, gender }: {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
-  // Reset on close
+  /* Reset everything when dialog closes */
   useEffect(() => {
     if (!open) {
       streamRef.current?.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
       setStep(1);
-      setName(""); setDob(""); setBio("");
+      setName(""); setEmail(""); setPassword(""); setDob(""); setBio("");
       setAvatarFile(null); setAvatarPreview(null);
       setCamPhase("idle"); setScanMsg(""); setScanPct(0);
       setCapturedBlob(null); setCapturedPreview(null);
     }
   }, [open]);
 
+  /* Camera helpers */
   async function startCamera() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -298,7 +349,7 @@ function SignupFlow({ open, onOpenChange, gender }: {
       }
       setCamPhase("active");
     } catch {
-      toast.error("Câmera indisponível. Selecione uma selfie da galeria.");
+      toast.error("Câmera indisponível. Verifique as permissões do navegador.");
     }
   }
 
@@ -341,14 +392,35 @@ function SignupFlow({ open, onOpenChange, gender }: {
     toast.success(isCreator ? "Selo de Criadora VIP validado!" : "Perfil verificado como real!");
   }
 
+  /* Final account creation */
   async function finish() {
     setSaving(true);
     try {
-      // Upload avatar
+      /* 1 — Create Supabase Auth user */
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: email.trim().toLowerCase(),
+        password,
+        options: {
+          data: { name: name.trim() },
+        },
+      });
+
+      if (authError) {
+        throw new Error(
+          authError.message === "User already registered"
+            ? "Este e-mail já está cadastrado. Use 'Já tenho conta' para entrar."
+            : authError.message,
+        );
+      }
+
+      const userId = authData.user?.id;
+      if (!userId) throw new Error("Erro ao criar conta. Tente novamente.");
+
+      /* 2 — Upload avatar */
       let avatarUrl: string | null = null;
       if (avatarFile) {
         const ext = avatarFile.name.split(".").pop() ?? "jpg";
-        const path = `avatars/${Date.now()}.${ext}`;
+        const path = `avatars/${userId}_${Date.now()}.${ext}`;
         const { data: sd } = await supabase.storage
           .from("photos")
           .upload(path, avatarFile, { upsert: true, contentType: avatarFile.type });
@@ -358,10 +430,10 @@ function SignupFlow({ open, onOpenChange, gender }: {
         }
       }
 
-      // Upload verification selfie
+      /* 3 — Upload biometric selfie */
       let verificationPhotoUrl: string | null = null;
       if (capturedBlob) {
-        const path = `verifications/${Date.now()}_selfie.jpg`;
+        const path = `verifications/${userId}_${Date.now()}_selfie.jpg`;
         const { data: vd } = await supabase.storage
           .from("photos")
           .upload(path, capturedBlob, { upsert: true, contentType: "image/jpeg" });
@@ -371,12 +443,14 @@ function SignupFlow({ open, onOpenChange, gender }: {
         }
       }
 
-      const { data, error } = await supabase
+      /* 4 — Insert profile linked to auth user */
+      const { data: profile, error: profileError } = await supabase
         .from("profiles")
         .insert({
+          id: userId,
           gender,
           name: name.trim(),
-          age: dob ? calcAge(dob) : 18,
+          age: computedAge ?? 18,
           bio: bio.trim(),
           location: "Brasil",
           avatar_url: avatarUrl,
@@ -390,22 +464,29 @@ function SignupFlow({ open, onOpenChange, gender }: {
         .select()
         .single();
 
-      if (error || !data) throw new Error(error?.message ?? "Erro ao criar perfil.");
+      if (profileError || !profile) {
+        /* If profile insert fails, remove the auth user to avoid orphaned accounts */
+        await supabase.auth.signOut();
+        throw new Error(profileError?.message ?? "Erro ao salvar perfil. Tente novamente.");
+      }
 
+      /* 5 — Hydrate store */
       actions.setProfile({
-        profileId: data.id,
+        profileId: profile.id,
         gender,
-        name: data.name,
-        avatarUrl: data.avatar_url,
-        coins: data.coin_balance,
-        earnings: Number(data.earnings_brl),
+        name: profile.name,
+        avatarUrl: profile.avatar_url,
+        coins: profile.coin_balance,
+        earnings: Number(profile.earnings_brl),
+        xp: profile.xp ?? 0,
+        level: profile.level ?? "bronze",
         vip: false,
       });
 
-      registerPush(data.id).catch((e) => console.warn("[OneSignal] registerPush failed:", e));
+      registerPush(profile.id).catch(() => {});
 
       supabase.from("notifications").insert({
-        user_id: data.id,
+        user_id: profile.id,
         type: "match",
         title: "Bem-vindo ao HotMatch! 🔥",
         content: isCreator
@@ -417,7 +498,7 @@ function SignupFlow({ open, onOpenChange, gender }: {
       });
 
       onOpenChange(false);
-      toast.success(`Bem-vindo ao HotMatch, ${data.name}! 🔥`);
+      toast.success(`Bem-vindo ao HotMatch, ${profile.name}! 🔥`);
       navigate({ to: "/" });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erro desconhecido ao criar conta.");
@@ -426,11 +507,16 @@ function SignupFlow({ open, onOpenChange, gender }: {
     }
   }
 
+  /* Step validation */
   const next = async () => {
     if (step === 1) {
-      if (!name.trim()) { toast.error("Informe seu nome."); return; }
+      if (!name.trim()) { toast.error("Informe seu nome ou apelido."); return; }
+      if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+        toast.error("Informe um e-mail válido."); return;
+      }
+      if (password.length < 6) { toast.error("A senha deve ter pelo menos 6 caracteres."); return; }
       if (!dob) { toast.error("Informe sua data de nascimento."); return; }
-      if (calcAge(dob) < 18) { toast.error("Você deve ter pelo menos 18 anos."); return; }
+      if (ageError) { toast.error(ageError); return; }
       if (!bio.trim()) { toast.error("Escreva uma breve bio."); return; }
       setStep(2);
     } else if (step === 2) {
@@ -442,15 +528,21 @@ function SignupFlow({ open, onOpenChange, gender }: {
     }
   };
 
+  /* ── Render ── */
+  const continueDisabledStep1 = !!ageError || saving;
+
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!saving) onOpenChange(v); }}>
       <DialogContent className="max-h-[92dvh] overflow-y-auto rounded-3xl border-border bg-surface p-5 sm:max-w-[26rem]">
         <DialogTitle className="sr-only">Criar conta HotMatch</DialogTitle>
 
-        {/* Progress */}
+        {/* Progress bar */}
         <div className="flex items-center gap-3">
           {step > 1 && (
-            <button onClick={() => setStep((s) => s - 1)} className="tap-scale text-muted-foreground">
+            <button
+              onClick={() => setStep((s) => s - 1)}
+              className="tap-scale text-muted-foreground"
+            >
               <ArrowLeft className="size-5" />
             </button>
           )}
@@ -458,7 +550,13 @@ function SignupFlow({ open, onOpenChange, gender }: {
           <div className="flex-1">
             <div className="flex gap-1.5">
               {Array.from({ length: STEPS }).map((_, i) => (
-                <span key={i} className={cn("h-1 flex-1 rounded-full transition-all", i < step ? "bg-gradient-hot" : "bg-surface-2")} />
+                <span
+                  key={i}
+                  className={cn(
+                    "h-1 flex-1 rounded-full transition-all",
+                    i < step ? "bg-gradient-hot" : "bg-surface-2",
+                  )}
+                />
               ))}
             </div>
             <p className="mt-1 text-[11px] text-muted-foreground">
@@ -470,32 +568,87 @@ function SignupFlow({ open, onOpenChange, gender }: {
           </div>
         </div>
 
-        {/* Step 1 — basic info */}
+        {/* ── Step 1: Basic info ── */}
         {step === 1 && (
           <div className="mt-4 space-y-3">
             <h2 className="text-lg font-extrabold">Dados básicos</h2>
-            <Field label="Seu Nome ou Apelido *" placeholder="Ex: Lucas ou Mari" value={name} onChange={(e) => setName(e.target.value)} />
-            <Field label="Data de nascimento (+18) *" type="date" value={dob} onChange={(e) => setDob(e.target.value)} />
+
+            <Field
+              label="Seu nome ou apelido *"
+              placeholder="Ex: Lucas ou Mari"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              autoComplete="name"
+            />
+            <Field
+              label="E-mail *"
+              type="email"
+              placeholder="seu@email.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+            />
+            <PasswordField
+              label="Senha * (mínimo 6 caracteres)"
+              value={password}
+              onChange={setPassword}
+              show={showPw}
+              onToggle={() => setShowPw((v) => !v)}
+              autoComplete="new-password"
+            />
+
+            {/* Date of birth with strict +18 gate */}
+            <div className="space-y-1.5">
+              <Label className="text-[11px] font-semibold text-muted-foreground">
+                Data de nascimento (+18) *
+              </Label>
+              <Input
+                type="date"
+                value={dob}
+                onChange={(e) => setDob(e.target.value)}
+                className="h-11 rounded-2xl border-border bg-surface-2"
+                max={new Date(new Date().setFullYear(new Date().getFullYear() - 18))
+                  .toISOString()
+                  .split("T")[0]}
+              />
+              {/* Real-time age feedback */}
+              {dob && (
+                <p
+                  className={cn(
+                    "text-[11px] font-semibold",
+                    ageError ? "text-destructive" : "text-green-500",
+                  )}
+                >
+                  {ageError ?? `✓ ${computedAge} anos — você pode continuar.`}
+                </p>
+              )}
+            </div>
+
             <div className="space-y-1.5">
               <Label className="text-[11px] font-semibold text-muted-foreground">Bio *</Label>
               <textarea
                 value={bio}
                 onChange={(e) => setBio(e.target.value)}
                 rows={3}
-                placeholder={isCreator ? "Ex: Criadora de conteúdo exclusivo 🔥" : "Ex: Aqui para curtir e conhecer pessoas!"}
+                placeholder={
+                  isCreator
+                    ? "Ex: Criadora de conteúdo exclusivo 🔥"
+                    : "Ex: Aqui para curtir e conhecer pessoas!"
+                }
                 className="w-full resize-none rounded-2xl border border-border bg-surface-2 px-4 py-3 text-sm text-foreground outline-none focus:border-primary placeholder:text-muted-foreground/60"
               />
             </div>
           </div>
         )}
 
-        {/* Step 2 — avatar + gallery */}
+        {/* ── Step 2: Profile photo ── */}
         {step === 2 && (
           <div className="mt-4 space-y-5">
             <h2 className="text-lg font-extrabold">Foto de Perfil</h2>
             <div className="flex flex-col items-center gap-3">
               <p className="text-xs font-semibold text-muted-foreground">
-                Foto de perfil <span className="text-primary">*obrigatória</span>
+                Foto de perfil{" "}
+                <span className="text-primary">*obrigatória</span>
               </p>
               <button
                 onClick={() => avatarInputRef.current?.click()}
@@ -505,7 +658,11 @@ function SignupFlow({ open, onOpenChange, gender }: {
                 )}
               >
                 {avatarPreview ? (
-                  <img src={avatarPreview} alt="Avatar" className="size-full rounded-full object-cover" />
+                  <img
+                    src={avatarPreview}
+                    alt="Avatar"
+                    className="size-full rounded-full object-cover"
+                  />
                 ) : (
                   <span className="grid size-28 place-items-center rounded-full bg-surface-2">
                     <Camera className="size-9 text-muted-foreground" />
@@ -515,7 +672,9 @@ function SignupFlow({ open, onOpenChange, gender }: {
                   <Plus className="size-4 text-white" />
                 </span>
               </button>
-              <p className="text-[11px] text-muted-foreground">Toque para selecionar da galeria ou tirar foto</p>
+              <p className="text-[11px] text-muted-foreground">
+                Toque para selecionar da galeria ou tirar foto
+              </p>
               <input
                 ref={avatarInputRef}
                 type="file"
@@ -530,13 +689,15 @@ function SignupFlow({ open, onOpenChange, gender }: {
           </div>
         )}
 
-        {/* Step 3 — biometrics */}
+        {/* ── Step 3: Biometric verification ── */}
         {step === 3 && (
           <div className="mt-4 space-y-4">
-            <h2 className="text-lg font-extrabold">{isCreator ? "Validação & Selo VIP" : "Validação Anti-Fake"}</h2>
+            <h2 className="text-lg font-extrabold">
+              {isCreator ? "Validação & Selo VIP" : "Validação Anti-Fake"}
+            </h2>
             <div className="rounded-2xl border border-gold/25 bg-gold/10 p-3">
               <p className="flex items-center gap-2 text-xs font-bold text-gold">
-                <ShieldCheck className="size-4" /> Verificação obrigatória
+                <ShieldCheck className="size-4" /> Verificação facial obrigatória
               </p>
               <p className="mt-1 text-[11px] text-muted-foreground">
                 {isCreator
@@ -559,7 +720,13 @@ function SignupFlow({ open, onOpenChange, gender }: {
                   style={{ width: 200, height: 240 }}
                 >
                   {(camPhase === "active" || camPhase === "scanning") && (
-                    <video ref={videoRef} autoPlay playsInline muted className="size-full object-cover [transform:scaleX(-1)]" />
+                    <video
+                      ref={videoRef}
+                      autoPlay
+                      playsInline
+                      muted
+                      className="size-full object-cover [transform:scaleX(-1)]"
+                    />
                   )}
                   {camPhase === "idle" && (
                     <div className="flex size-full items-center justify-center bg-surface-2">
@@ -575,7 +742,11 @@ function SignupFlow({ open, onOpenChange, gender }: {
                     </div>
                   )}
                   {camPhase === "done" && capturedPreview && (
-                    <img src={capturedPreview} alt="Selfie" className="size-full object-cover [transform:scaleX(-1)]" />
+                    <img
+                      src={capturedPreview}
+                      alt="Selfie capturada"
+                      className="size-full object-cover [transform:scaleX(-1)]"
+                    />
                   )}
                   {camPhase === "done" && (
                     <div className="absolute inset-0 flex items-end justify-center bg-gradient-to-t from-black/60 to-transparent pb-4">
@@ -585,6 +756,7 @@ function SignupFlow({ open, onOpenChange, gender }: {
                     </div>
                   )}
                 </div>
+
                 {(camPhase === "active" || camPhase === "scanning") && (
                   <>
                     <span className="absolute left-2 top-2 size-5 rounded-tl-xl border-l-2 border-t-2 border-primary" />
@@ -595,22 +767,30 @@ function SignupFlow({ open, onOpenChange, gender }: {
                 )}
               </div>
 
-              {/* hidden canvas for frame capture */}
+              {/* Hidden canvas for frame capture */}
               <canvas ref={canvasRef} className="hidden" />
 
               {(camPhase === "scanning" || camPhase === "done") && (
                 <div className="w-full max-w-[200px]">
                   <div className="h-1.5 overflow-hidden rounded-full bg-surface-2">
-                    <div className="h-full rounded-full bg-gradient-hot transition-all duration-700" style={{ width: `${scanPct}%` }} />
+                    <div
+                      className="h-full rounded-full bg-gradient-hot transition-all duration-700"
+                      style={{ width: `${scanPct}%` }}
+                    />
                   </div>
                 </div>
               )}
 
-              <p className={cn("text-center text-xs", camPhase === "done" ? "font-semibold text-gold" : "text-muted-foreground")}>
+              <p
+                className={cn(
+                  "text-center text-xs",
+                  camPhase === "done" ? "font-semibold text-gold" : "text-muted-foreground",
+                )}
+              >
                 {camPhase === "idle" && "Posicione seu rosto no círculo e ative a câmera"}
                 {camPhase === "active" && "Rosto detectado. Toque em Tirar Selfie quando estiver pronto."}
                 {camPhase === "scanning" && scanMsg}
-                {camPhase === "done" && "Biometria facial validada com sucesso ✓"}
+                {camPhase === "done" && "Biometria facial salva e enviada para verificação ✓"}
               </p>
 
               {camPhase === "idle" && (
@@ -619,7 +799,10 @@ function SignupFlow({ open, onOpenChange, gender }: {
                 </Button>
               )}
               {camPhase === "active" && (
-                <Button onClick={captureSelfie} className="rounded-full bg-gradient-hot text-primary-foreground shadow-hot">
+                <Button
+                  onClick={captureSelfie}
+                  className="rounded-full bg-gradient-hot text-primary-foreground shadow-hot"
+                >
                   <Camera className="size-4" /> Tirar Selfie
                 </Button>
               )}
@@ -627,24 +810,74 @@ function SignupFlow({ open, onOpenChange, gender }: {
           </div>
         )}
 
+        {/* Main CTA */}
         <Button
           onClick={next}
-          disabled={saving}
-          className="mt-5 h-12 w-full rounded-full bg-gradient-hot text-sm font-bold text-primary-foreground shadow-hot disabled:opacity-50"
+          disabled={step === 1 ? continueDisabledStep1 : saving}
+          className="mt-5 h-12 w-full rounded-full bg-gradient-hot text-sm font-bold text-primary-foreground shadow-hot disabled:opacity-40"
         >
           {saving ? "Criando conta..." : step >= STEPS ? "Criar minha conta" : "Continuar"}
           <ArrowRight className="size-4" />
         </Button>
+
+        {/* Explicit age-gate message below button on step 1 */}
+        {step === 1 && ageError && (
+          <p className="mt-2 text-center text-xs font-semibold text-destructive">{ageError}</p>
+        )}
       </DialogContent>
     </Dialog>
   );
 }
 
-function Field({ label, ...props }: { label: string } & React.InputHTMLAttributes<HTMLInputElement>) {
+/* ────────────────────────── Shared sub-components ────────────────────────── */
+function Field({
+  label,
+  ...props
+}: { label: string } & React.InputHTMLAttributes<HTMLInputElement>) {
   return (
     <div className="space-y-1.5">
       <Label className="text-[11px] font-semibold text-muted-foreground">{label}</Label>
       <Input className="h-11 rounded-2xl border-border bg-surface-2" {...props} />
+    </div>
+  );
+}
+
+function PasswordField({
+  label,
+  value,
+  onChange,
+  show,
+  onToggle,
+  autoComplete,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  show: boolean;
+  onToggle: () => void;
+  autoComplete?: string;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-[11px] font-semibold text-muted-foreground">{label}</Label>
+      <div className="relative">
+        <Input
+          type={show ? "text" : "password"}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="••••••"
+          autoComplete={autoComplete}
+          className="h-11 rounded-2xl border-border bg-surface-2 pr-10"
+        />
+        <button
+          type="button"
+          onClick={onToggle}
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+          tabIndex={-1}
+        >
+          {show ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+        </button>
+      </div>
     </div>
   );
 }

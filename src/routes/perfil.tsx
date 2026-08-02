@@ -24,6 +24,7 @@ import { VipModal } from "@/components/hotmatch/VipModal";
 import { StatsDrawer } from "@/components/hotmatch/StatsDrawer";
 import { SupportModal } from "@/components/hotmatch/SupportModal";
 import { actions, useAppState } from "@/lib/hotmatch/store";
+import { supabase } from "@/lib/supabase";
 import { useProfile, useUserPhotos, useProfileStats } from "@/hooks/use-profiles";
 
 export const Route = createFileRoute("/perfil")({
@@ -298,7 +299,8 @@ function SettingsMenu({
       </ul>
 
       <button
-        onClick={() => {
+        onClick={async () => {
+          await supabase.auth.signOut().catch(() => {});
           actions.signOut();
           toast("Você saiu da sua conta.", {
             className: "bg-white text-zinc-900 border border-zinc-200 shadow-xl rounded-2xl",
