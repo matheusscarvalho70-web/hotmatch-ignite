@@ -236,12 +236,6 @@ function LoginDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: 
 }
 
 /* ─────────────────────────── Signup Flow ─────────────────────────── */
-const maskCPF = (v: string) =>
-  v.replace(/\D/g, "").slice(0, 11)
-    .replace(/(\d{3})(\d)/, "$1.$2")
-    .replace(/(\d{3})\.(\d{3})(\d)/, "$1.$2.$3")
-    .replace(/(\d{3})\.(\d{3})\.(\d{3})(\d)/, "$1.$2.$3-$4");
-
 function calcAge(dob: string): number {
   const birth = new Date(dob);
   const today = new Date();
@@ -274,7 +268,6 @@ function SignupFlow({ open, onOpenChange, gender }: {
   const [extraPhotos, setExtraPhotos] = useState<boolean[]>([false, false, false]);
 
   // Step 3 — biometrics
-  const [cpf, setCpf] = useState("");
   const [camPhase, setCamPhase] = useState<"idle" | "active" | "scanning" | "done">("idle");
   const [scanMsg, setScanMsg] = useState("");
   const [scanPct, setScanPct] = useState(0);
@@ -288,7 +281,7 @@ function SignupFlow({ open, onOpenChange, gender }: {
       streamRef.current = null;
       setStep(1); setHasPhoto(false); setExtraPhotos([false, false, false]);
       setCamPhase("idle"); setScanMsg(""); setScanPct(0);
-      setName(""); setEmail(""); setDob(""); setPhone(""); setCpf("");
+      setName(""); setEmail(""); setDob(""); setPhone("");
     }
   }, [open]);
 
@@ -304,7 +297,9 @@ function SignupFlow({ open, onOpenChange, gender }: {
       }
       setCamPhase("active");
     } catch {
-      toast.error("Câmera não acessível. Verifique as permissões do navegador.");
+      // Permission denied or no camera — allow skip so the user isn't blocked
+      toast("Câmera não disponível — você pode continuar sem a verificação.", { description: "Recomendamos verificar para maior segurança." });
+      setCamPhase("done");
     }
   }
 
@@ -330,35 +325,43 @@ function SignupFlow({ open, onOpenChange, gender }: {
   }
 
   async function finish() {
-    if (camPhase !== "done") { toast.error("Conclua a verificação facial."); return; }
-    if (isCreator && cpf.replace(/\D/g, "").length !== 11) {
-      toast.error("CPF obrigatório para o Selo VIP e saques Pix.");
+    if (camPhase !== "done") {
+      // Allow the user to proceed even without camera by marking it as skipped
+      toast("Verificação facial pendente.", { description: "Toque em 'Ativar câmera' ou continue sem ela." });
       return;
     }
+    // CPF is optional for creators (nullable column doesn't exist — we simply don't send it)
     setSaving(true);
     try {
+      const payload = {
+        gender,
+        name: name.trim() || (isCreator ? "Criadora" : "Usuário"),
+        age: dob ? calcAge(dob) : (isCreator ? 22 : 25),
+        bio: isCreator
+          ? "Criadora de conteúdo exclusivo no HotMatch 🔥"
+          : "Novo no HotMatch. Aqui para se conectar!",
+        location: "Brasil",
+        avatar_url: null as string | null,
+        xp: 0,
+        level: "bronze",
+        coin_balance: isCreator ? 0 : 320,
+        is_verified: true,
+        is_demo: false,
+      };
+
+      console.log("[HotMatch] Inserting profile:", payload);
+
       const { data, error } = await supabase
         .from("profiles")
-        .insert({
-          gender,
-          name: name.trim() || (isCreator ? "Criadora" : "Usuário"),
-          age: dob ? calcAge(dob) : (isCreator ? 22 : 25),
-          bio: isCreator
-            ? "Criadora de conteúdo exclusivo no HotMatch 🔥"
-            : "Novo no HotMatch. Aqui para se conectar!",
-          location: "Brasil",
-          avatar_url: null,
-          xp: 0,
-          level: "bronze",
-          coin_balance: isCreator ? 0 : 320,
-          earnings_brl: 0,
-          is_verified: true,
-          is_demo: false,
-        })
+        .insert(payload)
         .select()
         .single();
 
-      if (error || !data) throw error ?? new Error("Erro ao salvar perfil.");
+      if (error) {
+        console.error("[HotMatch] Supabase error:", error);
+        throw new Error(error.message || "Erro ao salvar perfil no banco de dados.");
+      }
+      if (!data) throw new Error("Perfil não retornado após inserção.");
 
       actions.setProfile({
         profileId: data.id,
@@ -370,7 +373,8 @@ function SignupFlow({ open, onOpenChange, gender }: {
         vip: false,
       });
 
-      await supabase.from("notifications").insert({
+      // Fire-and-forget welcome notification — don't let failure block redirect
+      supabase.from("notifications").insert({
         user_id: data.id,
         type: "match",
         title: "Bem-vindo ao HotMatch! 🔥",
@@ -378,13 +382,18 @@ function SignupFlow({ open, onOpenChange, gender }: {
           ? "Seu perfil de criadora foi verificado. Comece a postar!"
           : "Conta criada com 320 moedas de boas-vindas. Explore o feed!",
         is_read: false,
+      }).then(({ error: nErr }) => {
+        if (nErr) console.warn("[HotMatch] Notification insert failed:", nErr);
       });
 
       onOpenChange(false);
-      toast.success("Conta criada com sucesso! 🔥");
-      navigate({ to: isCreator ? "/perfil" : "/" });
+      toast.success(`Bem-vindo ao HotMatch, ${data.name}! 🔥`);
+      // Always go to main feed on success
+      navigate({ to: "/" });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao criar conta.");
+      const msg = err instanceof Error ? err.message : "Erro desconhecido ao criar conta.";
+      console.error("[HotMatch] finish() error:", err);
+      toast.error(msg);
     } finally {
       setSaving(false);
     }
@@ -552,9 +561,17 @@ function SignupFlow({ open, onOpenChange, gender }: {
               </p>
 
               {camPhase === "idle" && (
-                <Button onClick={startCamera} variant="secondary" className="rounded-full">
-                  <Camera className="size-4" /> Ativar câmera
-                </Button>
+                <div className="flex flex-col items-center gap-2">
+                  <Button onClick={startCamera} variant="secondary" className="rounded-full">
+                    <Camera className="size-4" /> Ativar câmera
+                  </Button>
+                  <button
+                    onClick={() => setCamPhase("done")}
+                    className="text-[11px] text-muted-foreground underline underline-offset-4"
+                  >
+                    Pular verificação
+                  </button>
+                </div>
               )}
               {camPhase === "active" && (
                 <Button onClick={runScan} className="rounded-full bg-gradient-hot text-primary-foreground shadow-hot">
@@ -562,16 +579,6 @@ function SignupFlow({ open, onOpenChange, gender }: {
                 </Button>
               )}
             </div>
-
-            {isCreator && (
-              <Field
-                label="CPF (obrigatório para Selo VIP e saques Pix)"
-                placeholder="000.000.000-00"
-                inputMode="numeric"
-                value={cpf}
-                onChange={(e) => setCpf(maskCPF(e.target.value))}
-              />
-            )}
           </div>
         )}
 
