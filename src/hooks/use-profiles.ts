@@ -22,7 +22,7 @@ export function useProfiles() {
   return { profiles, loading };
 }
 
-export function useProfile(id: string) {
+export function useProfile(id: string, refreshKey = 0) {
   const [profile, setProfile] = useState<DbProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -39,12 +39,12 @@ export function useProfile(id: string) {
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
-  }, [id]);
+  }, [id, refreshKey]);
 
   return { profile, loading };
 }
 
-export function useUserPhotos(userId: string) {
+export function useUserPhotos(userId: string, refreshKey = 0) {
   const [publicPhotos, setPublicPhotos] = useState<DbUserPhoto[]>([]);
   const [vipPhotos, setVipPhotos] = useState<DbUserPhoto[]>([]);
   const [loading, setLoading] = useState(true);
@@ -66,7 +66,7 @@ export function useUserPhotos(userId: string) {
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
-  }, [userId]);
+  }, [userId, refreshKey]);
 
   return { publicPhotos, vipPhotos, loading };
 }

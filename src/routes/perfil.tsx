@@ -54,9 +54,10 @@ function ProfilePage() {
   const isCreator = gender === "female";
   const navigate = useNavigate();
   const [modal, setModal] = useState<ModalKey>(null);
+  const [profileKey, setProfileKey] = useState(0);
 
-  const { profile, loading: profileLoading } = useProfile(profileId ?? "");
-  const { publicPhotos, vipPhotos } = useUserPhotos(profileId ?? "");
+  const { profile, loading: profileLoading } = useProfile(profileId ?? "", profileKey);
+  const { publicPhotos, vipPhotos } = useUserPhotos(profileId ?? "", profileKey);
   const { stats } = useProfileStats(profileId);
 
   const displayName   = profile?.name      ?? storeName;
@@ -117,7 +118,14 @@ function ProfilePage() {
       )}
 
       {/* Modals & drawers */}
-      <EditProfileModal open={modal === "edit"} onClose={() => setModal(null)} />
+      <EditProfileModal
+        open={modal === "edit"}
+        onClose={() => setModal(null)}
+        onSaved={() => setProfileKey((k) => k + 1)}
+        profile={profile}
+        publicPhotos={publicPhotos}
+        vipPhotos={vipPhotos}
+      />
       <PrivacyModal open={modal === "privacy"} onClose={() => setModal(null)} />
       {isCreator ? (
         <EarningsDrawer open={modal === "role"} onClose={() => setModal(null)} />
