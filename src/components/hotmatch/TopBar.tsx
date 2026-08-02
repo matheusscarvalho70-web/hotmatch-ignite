@@ -1,10 +1,10 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Bell, CheckCheck, Coins, Crown, Heart, MessageCircle, Sparkles, X, Zap } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { HotMark } from "@/components/hotmatch/HotMark";
 import { useNotifications } from "@/hooks/use-notifications";
-import { useProfiles } from "@/hooks/use-profiles";
 import { useAppState } from "@/lib/hotmatch/store";
+import { supabase } from "@/lib/supabase";
 
 /* ------------------------------------------------------------------ */
 /*  Coin Badge (male)                                                    */
@@ -47,15 +47,28 @@ function CreatorBadge({ onClick }: { onClick: () => void }) {
 /*  Gamification Modal (female)                                         */
 /* ------------------------------------------------------------------ */
 function GamificationModal({ onClose }: { onClose: () => void }) {
-  const XP = 7200;
-  const NEXT = 10000;
-  const pct = Math.round((XP / NEXT) * 100);
+  const { xp, level, earnings, profileId } = useAppState();
+  const [postCount, setPostCount] = useState(0);
+
+  useEffect(() => {
+    if (!profileId) return;
+    supabase
+      .from("feed_posts")
+      .select("id", { count: "exact" })
+      .eq("author_id", profileId)
+      .then(({ count }) => { if (count != null) setPostCount(count); });
+  }, [profileId]);
+
+  const LEVEL_XP: Record<string, number> = { bronze: 1000, silver: 5000, gold: 10000, platinum: 25000 };
+  const NEXT_LEVEL: Record<string, string> = { bronze: "Prata", silver: "Ouro", gold: "Platina", platinum: "Platina" };
+  const nextXP = LEVEL_XP[level] ?? 1000;
+  const pct = Math.min(100, Math.round((xp / nextXP) * 100));
+  const levelLabel: Record<string, string> = { bronze: "Bronze", silver: "Prata", gold: "Ouro", platinum: "Platina" };
 
   const achievements = [
-    { emoji: "🔥", label: "42 posts publicados", done: true },
-    { emoji: "👥", label: "1.840 seguidores", done: true },
-    { emoji: "💸", label: "R$ 2.480 ganhos", done: true },
-    { emoji: "👑", label: "Nível Platina (10k XP)", done: false },
+    { emoji: "📸", label: `${postCount} post${postCount !== 1 ? "s" : ""} publicado${postCount !== 1 ? "s" : ""}`, done: postCount > 0 },
+    { emoji: "💸", label: earnings > 0 ? `R$\u00a0${earnings.toFixed(2).replace(".", ",")} ganhos` : "Nenhum ganho ainda", done: earnings > 0 },
+    { emoji: "👑", label: `Nível ${NEXT_LEVEL[level] ?? "Platina"} (${nextXP.toLocaleString("pt-BR")} XP)`, done: false },
   ];
 
   return (
@@ -84,19 +97,15 @@ function GamificationModal({ onClose }: { onClose: () => void }) {
               <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
                 Status da Criadora
               </p>
-              <h2 className="text-xl font-extrabold text-gold">Nível Ouro</h2>
+              <h2 className="text-xl font-extrabold text-gold">{levelLabel[level] ?? level}</h2>
             </div>
           </div>
 
           {/* XP bar */}
           <div className="mt-4">
             <div className="mb-1.5 flex justify-between text-[11px] font-semibold">
-              <span className="text-muted-foreground">
-                {XP.toLocaleString("pt-BR")} XP
-              </span>
-              <span className="text-gold">
-                próximo: {NEXT.toLocaleString("pt-BR")} XP
-              </span>
+              <span className="text-muted-foreground">{xp.toLocaleString("pt-BR")} XP</span>
+              <span className="text-gold">próximo: {nextXP.toLocaleString("pt-BR")} XP</span>
             </div>
             <div className="h-2 overflow-hidden rounded-full bg-surface-2">
               <div
@@ -105,34 +114,26 @@ function GamificationModal({ onClose }: { onClose: () => void }) {
               />
             </div>
             <p className="mt-1 text-right text-[10px] text-muted-foreground">
-              {pct}% para Nível Platina
+              {pct}% para Nível {NEXT_LEVEL[level] ?? "Platina"}
             </p>
           </div>
         </div>
 
         <div className="space-y-3 p-5">
-          <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
-            Conquistas
-          </p>
+          <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Conquistas</p>
           <ul className="space-y-2">
             {achievements.map((a) => (
               <li
                 key={a.label}
                 className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm ${
-                  a.done
-                    ? "border border-gold/20 bg-gold/8"
-                    : "border border-border bg-surface-2"
+                  a.done ? "border border-gold/20 bg-gold/8" : "border border-border bg-surface-2"
                 }`}
               >
                 <span className="text-lg">{a.emoji}</span>
-                <span
-                  className={`flex-1 font-medium ${a.done ? "text-foreground" : "text-muted-foreground"}`}
-                >
+                <span className={`flex-1 font-medium ${a.done ? "text-foreground" : "text-muted-foreground"}`}>
                   {a.label}
                 </span>
-                {a.done && (
-                  <CheckCheck className="size-4 shrink-0 text-gold" />
-                )}
+                {a.done && <CheckCheck className="size-4 shrink-0 text-gold" />}
               </li>
             ))}
           </ul>
@@ -140,7 +141,7 @@ function GamificationModal({ onClose }: { onClose: () => void }) {
           <div className="flex items-center gap-2 rounded-2xl border border-primary/25 bg-primary/8 px-3 py-2.5">
             <Zap className="size-4 text-primary" />
             <p className="text-xs font-semibold text-primary">
-              Publique 2 conteúdos VIP esta semana para ganhar +300 XP
+              Publique conteúdo VIP para ganhar XP e subir de nível
             </p>
           </div>
         </div>
@@ -153,20 +154,13 @@ function GamificationModal({ onClose }: { onClose: () => void }) {
 /*  Notifications Drawer                                                */
 /* ------------------------------------------------------------------ */
 function NotificationsDrawer({ onClose }: { onClose: () => void }) {
-  const { gender, vip } = useAppState();
   const navigate = useNavigate();
-  const isMale = gender === "male";
-  const { notifications, loading } = useNotifications();
-  const { profiles: dbProfiles } = useProfiles();
+  const { notifications, loading, unreadCount, markAllRead } = useNotifications();
 
   const msgNotifs   = notifications.filter((n) => n.type === "message");
   const matchNotifs = notifications.filter((n) => n.type === "match");
   const likeNotifs  = notifications.filter((n) => n.type === "like");
-
-  // Build avatar lookup: sender name → profile avatar
-  function avatarFor(index: number) {
-    return dbProfiles[index % Math.max(dbProfiles.length, 1)]?.avatar_url ?? "";
-  }
+  const otherNotifs = notifications.filter((n) => !["message", "match", "like"].includes(n.type));
 
   if (loading) return null;
 
@@ -187,13 +181,13 @@ function NotificationsDrawer({ onClose }: { onClose: () => void }) {
 
           {msgNotifs.length > 0 && (
             <Section title="Novas mensagens" icon={<MessageCircle className="size-3.5 text-primary" />}>
-              {msgNotifs.map((n, i) => (
+              {msgNotifs.map((n) => (
                 <button
                   key={n.id}
                   onClick={() => { onClose(); navigate({ to: "/mensagens" }); }}
                   className="flex w-full items-center gap-3 py-3 text-left"
                 >
-                  <img src={avatarFor(i)} alt="" className="size-10 shrink-0 rounded-full object-cover" />
+                  <NotifIcon emoji="💬" />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold">{n.title}</p>
                     <p className="truncate text-xs text-muted-foreground">{n.content}</p>
@@ -206,58 +200,68 @@ function NotificationsDrawer({ onClose }: { onClose: () => void }) {
 
           {matchNotifs.length > 0 && (
             <Section title="Novos matches" icon={<Heart className="size-3.5 text-primary" />}>
-              {matchNotifs.map((n, i) => (
+              {matchNotifs.map((n) => (
                 <div key={n.id} className="flex items-center gap-3 py-3">
-                  <div className="ring-match grid size-10 shrink-0 place-items-center rounded-full p-[2px]">
-                    <img src={avatarFor(i + 1)} alt="" className="size-full rounded-full object-cover" />
-                  </div>
+                  <NotifIcon emoji="🔥" />
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold">{n.title}</p>
                     <p className="text-xs text-muted-foreground">{n.content}</p>
                   </div>
-                  <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">Match!</span>
+                  {!n.is_read && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">Novo</span>}
                 </div>
               ))}
             </Section>
           )}
 
-          <Section title="Quem curtiu seu perfil" icon={<Sparkles className="size-3.5 text-gold" />}>
-            <div className="flex items-center gap-2 py-3">
-              {dbProfiles.filter((p) => p.gender === "female").slice(0, 3).map((p, i) => (
-                <div key={p.id} className="relative shrink-0">
-                  <img
-                    src={p.avatar_url ?? ""}
-                    alt={p.name}
-                    className={`size-12 rounded-full object-cover ${isMale && !vip ? "blur-md brightness-50" : ""}`}
-                  />
-                  {isMale && !vip && (
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <span className="text-lg">❓</span>
-                    </div>
-                  )}
+          {likeNotifs.length > 0 && (
+            <Section title="Curtidas" icon={<Sparkles className="size-3.5 text-gold" />}>
+              {likeNotifs.map((n) => (
+                <div key={n.id} className="flex items-center gap-3 py-3">
+                  <NotifIcon emoji="❤️" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold">{n.title}</p>
+                    <p className="text-xs text-muted-foreground">{n.content}</p>
+                  </div>
                 </div>
               ))}
-            </div>
-            {likeNotifs.map((n) => (
-              <p key={n.id} className="pb-1 text-xs text-muted-foreground">{n.content}</p>
-            ))}
-            {isMale && !vip && (
-              <button
-                onClick={() => { onClose(); navigate({ to: "/loja" }); }}
-                className="tap-scale mb-3 flex w-full items-center justify-center gap-2 rounded-full bg-gradient-gold py-2.5 text-xs font-extrabold text-gold-foreground shadow-gold"
-              >
-                <Crown className="size-4" />
-                Desbloquear com moedas ou Seja VIP
-              </button>
-            )}
-          </Section>
+            </Section>
+          )}
+
+          {otherNotifs.length > 0 && (
+            <Section title="Atividade" icon={<Bell className="size-3.5 text-muted-foreground" />}>
+              {otherNotifs.map((n) => (
+                <div key={n.id} className="flex items-center gap-3 py-3">
+                  <NotifIcon emoji="🔔" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold">{n.title}</p>
+                    <p className="text-xs text-muted-foreground">{n.content}</p>
+                  </div>
+                  {!n.is_read && <span className="size-2 shrink-0 rounded-full bg-primary" />}
+                </div>
+              ))}
+            </Section>
+          )}
 
           {notifications.length === 0 && (
-            <p className="py-4 text-center text-sm text-muted-foreground">Nenhuma notificação.</p>
+            <div className="flex flex-col items-center gap-3 py-12 text-center">
+              <span className="grid size-14 place-items-center rounded-full bg-surface-2">
+                <Bell className="size-6 text-muted-foreground" />
+              </span>
+              <p className="text-sm font-semibold">Nenhuma notificação por enquanto</p>
+              <p className="text-xs text-muted-foreground">As notificações de curtidas, matches e mensagens aparecerão aqui.</p>
+            </div>
           )}
         </div>
       </div>
     </>
+  );
+}
+
+function NotifIcon({ emoji }: { emoji: string }) {
+  return (
+    <span className="grid size-10 shrink-0 place-items-center rounded-full bg-surface-2 text-xl">
+      {emoji}
+    </span>
   );
 }
 

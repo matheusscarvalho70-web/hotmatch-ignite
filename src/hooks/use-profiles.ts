@@ -91,10 +91,45 @@ export function useSessionBootstrap() {
           avatarUrl: data.avatar_url,
           coins: data.coin_balance,
           earnings: Number(data.earnings_brl),
+          xp: data.xp ?? 0,
+          level: data.level ?? "bronze",
           vip: false,
         });
       });
   // intentionally run once on mount
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+}
+
+export type ProfileStats = {
+  postCount: number;
+  likesTotal: number;
+  giftsReceived: number;
+  followersCount: number;
+};
+
+export function useProfileStats(profileId: string | null) {
+  const [stats, setStats] = useState<ProfileStats>({ postCount: 0, likesTotal: 0, giftsReceived: 0, followersCount: 0 });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!profileId) { setLoading(false); return; }
+    let cancelled = false;
+
+    Promise.all([
+      supabase.from("feed_posts").select("likes", { count: "exact" }).eq("author_id", profileId),
+      supabase.from("chat_messages").select("id", { count: "exact" }).eq("receiver_id", profileId).eq("message_kind", "gift"),
+    ]).then(([postsRes, giftsRes]) => {
+      if (cancelled) return;
+      const postCount = postsRes.count ?? 0;
+      const likesTotal = (postsRes.data ?? []).reduce((s: number, p: { likes: number }) => s + (p.likes ?? 0), 0);
+      const giftsReceived = giftsRes.count ?? 0;
+      setStats({ postCount, likesTotal, giftsReceived, followersCount: 0 });
+      setLoading(false);
+    });
+
+    return () => { cancelled = true; };
+  }, [profileId]);
+
+  return { stats, loading };
 }

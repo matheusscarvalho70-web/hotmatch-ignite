@@ -1,45 +1,152 @@
-import { useState } from "react";
-import { Camera, X } from "lucide-react";
+import { useRef, useState } from "react";
+import { Camera, Plus, Save, X } from "lucide-react";
 import { toast } from "sonner";
-import { useAppState } from "@/lib/hotmatch/store";
-
-const PLACEHOLDER_AVATARS = [
-  "https://images.pexels.com/photos/15719223/pexels-photo-15719223.jpeg?auto=compress&cs=tinysrgb&w=400",
-  "https://images.pexels.com/photos/20459105/pexels-photo-20459105.jpeg?auto=compress&cs=tinysrgb&w=400",
-  "https://images.pexels.com/photos/1066109/pexels-photo-1066109.jpeg?auto=compress&cs=tinysrgb&w=400",
-  "https://images.pexels.com/photos/33949302/pexels-photo-33949302.jpeg?auto=compress&cs=tinysrgb&w=400",
-  "https://images.pexels.com/photos/7304337/pexels-photo-7304337.jpeg?auto=compress&cs=tinysrgb&w=400",
-  "https://images.pexels.com/photos/16974331/pexels-photo-16974331.jpeg?auto=compress&cs=tinysrgb&w=400",
-];
+import { actions, useAppState } from "@/lib/hotmatch/store";
+import { supabase } from "@/lib/supabase";
 
 type Props = { open: boolean; onClose: () => void };
 
 export function EditProfileModal({ open, onClose }: Props) {
-  const { gender } = useAppState();
+  const { gender, profileId, name: storeName, avatarUrl: storeAvatar } = useAppState();
   const isCreator = gender === "female";
 
-  const { name: storeName, avatarUrl } = useAppState();
-  const [name, setName] = useState(storeName || (isCreator ? "Criadora" : "Usuário"));
+  const [name, setName] = useState(storeName || "");
   const [age, setAge] = useState("");
-  const [bio, setBio] = useState(
-    isCreator ? "Criadora de conteúdo exclusivo 🔥" : "Aqui para se conectar!",
-  );
-  const [location, setLocation] = useState("Brasil");
+  const [bio, setBio] = useState("");
+  const [location, setLocation] = useState("");
 
-  const [hasAvatar, setHasAvatar] = useState(!!avatarUrl);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(storeAvatar);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
 
-  const PUBLIC_SRCS = PLACEHOLDER_AVATARS.slice(0, 3);
-  const [publicFilled, setPublicFilled] = useState([false, false, false]);
+  const [publicFiles, setPublicFiles] = useState<(File | null)[]>([null, null, null]);
+  const [publicPreviews, setPublicPreviews] = useState<(string | null)[]>([null, null, null]);
 
-  const VIP_SRCS = PLACEHOLDER_AVATARS;
-  const [vipFilled, setVipFilled] = useState([false, false, false, false, false, false]);
+  const [vipFiles, setVipFiles] = useState<(File | null)[]>([null, null, null, null, null, null]);
+  const [vipPreviews, setVipPreviews] = useState<(string | null)[]>([null, null, null, null, null, null]);
 
-  function save() {
-    toast("Alterações salvas! ✨", {
-      description: "Seu perfil foi atualizado com sucesso.",
-      className: "bg-white text-zinc-900 border border-zinc-200 shadow-xl rounded-2xl",
+  const [saving, setSaving] = useState(false);
+
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+
+  function onAvatarPick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setAvatarFile(file);
+    setAvatarPreview(URL.createObjectURL(file));
+  }
+
+  function onGalleryPick(
+    e: React.ChangeEvent<HTMLInputElement>,
+    index: number,
+    kind: "public" | "vip",
+  ) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    if (kind === "public") {
+      setPublicFiles((f) => f.map((v, i) => (i === index ? file : v)));
+      setPublicPreviews((p) => p.map((v, i) => (i === index ? url : v)));
+    } else {
+      setVipFiles((f) => f.map((v, i) => (i === index ? file : v)));
+      setVipPreviews((p) => p.map((v, i) => (i === index ? url : v)));
+    }
+  }
+
+  async function uploadFile(file: File, path: string): Promise<string | null> {
+    const { data, error } = await supabase.storage.from("photos").upload(path, file, {
+      upsert: true,
+      contentType: file.type,
     });
-    onClose();
+    if (error) {
+      console.error("[Upload] Failed:", error.message);
+      return null;
+    }
+    const { data: { publicUrl } } = supabase.storage.from("photos").getPublicUrl(data.path);
+    return publicUrl;
+  }
+
+  async function save() {
+    if (!profileId) { toast.error("Faça login para editar o perfil."); return; }
+    setSaving(true);
+
+    try {
+      let finalAvatarUrl = storeAvatar;
+
+      if (avatarFile) {
+        const url = await uploadFile(avatarFile, `${profileId}/avatar_${Date.now()}`);
+        if (url) finalAvatarUrl = url;
+      }
+
+      const updatePayload: Record<string, unknown> = {};
+      if (name.trim()) updatePayload.name = name.trim();
+      if (age.trim() && !isNaN(Number(age))) updatePayload.age = Number(age);
+      if (bio.trim()) updatePayload.bio = bio.trim();
+      if (location.trim()) updatePayload.location = location.trim();
+      if (finalAvatarUrl) updatePayload.avatar_url = finalAvatarUrl;
+
+      if (Object.keys(updatePayload).length > 0) {
+        const { error } = await supabase
+          .from("profiles")
+          .update(updatePayload)
+          .eq("id", profileId);
+        if (error) throw new Error(error.message);
+      }
+
+      // Upload public gallery photos
+      const publicUploads = publicFiles.map(async (file, i) => {
+        if (!file) return;
+        const url = await uploadFile(file, `${profileId}/public_${i}_${Date.now()}`);
+        if (url) {
+          await supabase.from("user_photos").insert({
+            user_id: profileId,
+            photo_url: url,
+            photo_kind: "public",
+            coin_price: 0,
+            is_active: true,
+          });
+        }
+      });
+
+      // Upload VIP gallery photos (creators only)
+      const vipUploads = isCreator
+        ? vipFiles.map(async (file, i) => {
+            if (!file) return;
+            const url = await uploadFile(file, `${profileId}/vip_${i}_${Date.now()}`);
+            if (url) {
+              await supabase.from("user_photos").insert({
+                user_id: profileId,
+                photo_url: url,
+                photo_kind: "vip",
+                coin_price: 60,
+                is_active: true,
+              });
+            }
+          })
+        : [];
+
+      await Promise.all([...publicUploads, ...vipUploads]);
+
+      // Sync store with updated values
+      if (finalAvatarUrl && finalAvatarUrl !== storeAvatar) {
+        actions.setProfile({
+          profileId,
+          gender,
+          name: (updatePayload.name as string) || storeName,
+          avatarUrl: finalAvatarUrl,
+          coins: 0,
+          earnings: 0,
+        });
+      }
+
+      toast.success("Perfil atualizado! ✨");
+      onClose();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Erro ao salvar.";
+      console.error("[EditProfile] save error:", err);
+      toast.error(msg);
+    } finally {
+      setSaving(false);
+    }
   }
 
   if (!open) return null;
@@ -73,9 +180,9 @@ export function EditProfileModal({ open, onClose }: Props) {
           <div className="flex flex-col items-center gap-3">
             <div className="relative">
               <div className="ring-match grid size-24 place-items-center rounded-full p-[3px] shadow-gold">
-                {hasAvatar ? (
+                {avatarPreview ? (
                   <img
-                    src={avatarUrl ?? PLACEHOLDER_AVATARS[0]}
+                    src={avatarPreview}
                     alt="Avatar"
                     className="size-full rounded-full object-cover"
                   />
@@ -84,63 +191,78 @@ export function EditProfileModal({ open, onClose }: Props) {
                 )}
               </div>
               <button
-                onClick={() => setHasAvatar((v) => !v)}
+                onClick={() => avatarInputRef.current?.click()}
                 className="tap-scale absolute -bottom-1 -right-1 grid size-7 place-items-center rounded-full bg-gradient-hot shadow-hot"
               >
                 <Camera className="size-3.5 text-white" />
               </button>
+              <input
+                ref={avatarInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={onAvatarPick}
+              />
             </div>
-            <p className="text-xs text-muted-foreground">Toque na câmera para alterar sua foto</p>
+            <p className="text-xs text-muted-foreground">
+              Toque na câmera para tirar ou selecionar uma foto
+            </p>
           </div>
 
-          {/* Fields */}
+          {/* Text fields */}
           <div className="space-y-4">
-            <Field label="Nome" value={name} onChange={setName} />
-            <Field label="Idade" value={age} onChange={setAge} type="number" />
+            <Field label="Nome" value={name} onChange={setName} placeholder={storeName || "Seu nome"} />
+            <Field label="Idade" value={age} onChange={setAge} type="number" placeholder="Ex: 25" />
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-muted-foreground">Bio</label>
               <textarea
                 value={bio}
                 onChange={(e) => setBio(e.target.value)}
                 rows={3}
-                className="w-full resize-none rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-foreground outline-none focus:border-primary"
+                placeholder="Conte algo sobre você..."
+                className="w-full resize-none rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-foreground outline-none focus:border-primary placeholder:text-muted-foreground/60"
               />
             </div>
-            <Field label="Localização" value={location} onChange={setLocation} />
+            <Field label="Localização" value={location} onChange={setLocation} placeholder="Ex: São Paulo, SP" />
           </div>
 
-          {/* Public gallery — 3 slots (1 avatar slot above + 3 here = 4 total) */}
+          {/* Public gallery */}
           <div>
             <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-              Galeria Pública · 3 fotos secundárias
+              Galeria Pública · 3 fotos
             </p>
             <div className="grid grid-cols-3 gap-2">
-              {PUBLIC_SRCS.map((src, i) => (
+              {publicPreviews.map((src, i) => (
                 <GallerySlot
                   key={i}
-                  src={publicFilled[i] ? src : null}
-                  onToggle={() =>
-                    setPublicFilled((f) => f.map((v, j) => (j === i ? !v : v)))
-                  }
+                  src={src}
+                  onPick={(e) => onGalleryPick(e, i, "public")}
+                  onRemove={() => {
+                    setPublicFiles((f) => f.map((v, j) => (j === i ? null : v)));
+                    setPublicPreviews((p) => p.map((v, j) => (j === i ? null : v)));
+                  }}
                 />
               ))}
             </div>
           </div>
 
-          {/* VIP gallery — 6 slots, creators only */}
+          {/* VIP gallery (creators only) */}
           {isCreator && (
             <div>
               <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
                 Galeria VIP 🔒 · 6 slots
               </p>
               <div className="grid grid-cols-3 gap-2">
-                {VIP_SRCS.map((src, i) => (
+                {vipPreviews.map((src, i) => (
                   <GallerySlot
                     key={i}
-                    src={vipFilled[i] ? src : null}
-                    onToggle={() =>
-                      setVipFilled((f) => f.map((v, j) => (j === i ? !v : v)))
-                    }
+                    src={src}
+                    onPick={(e) => onGalleryPick(e, i, "vip")}
+                    onRemove={() => {
+                      setVipFiles((f) => f.map((v, j) => (j === i ? null : v)));
+                      setVipPreviews((p) => p.map((v, j) => (j === i ? null : v)));
+                    }}
                   />
                 ))}
               </div>
@@ -149,9 +271,11 @@ export function EditProfileModal({ open, onClose }: Props) {
 
           <button
             onClick={save}
-            className="tap-scale w-full rounded-full bg-gradient-hot py-3.5 text-sm font-extrabold text-primary-foreground shadow-hot"
+            disabled={saving}
+            className="tap-scale flex w-full items-center justify-center gap-2 rounded-full bg-gradient-hot py-3.5 text-sm font-extrabold text-primary-foreground shadow-hot disabled:opacity-50"
           >
-            Salvar alterações
+            <Save className="size-4" />
+            {saving ? "Salvando..." : "Salvar alterações"}
           </button>
         </div>
       </div>
@@ -164,11 +288,13 @@ function Field({
   value,
   onChange,
   type = "text",
+  placeholder,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   type?: string;
+  placeholder?: string;
 }) {
   return (
     <div className="space-y-1.5">
@@ -177,7 +303,8 @@ function Field({
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-foreground outline-none focus:border-primary"
+        placeholder={placeholder}
+        className="w-full rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-foreground outline-none focus:border-primary placeholder:text-muted-foreground/60"
       />
     </div>
   );
@@ -185,23 +312,43 @@ function Field({
 
 function GallerySlot({
   src,
-  onToggle,
+  onPick,
+  onRemove,
 }: {
-  src: string | null | undefined;
-  onToggle: () => void;
+  src: string | null;
+  onPick: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onRemove: () => void;
 }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
   return (
-    <button
-      onClick={onToggle}
-      className="tap-scale relative aspect-square overflow-hidden rounded-xl border-2 border-dashed border-border bg-surface-2"
-    >
+    <div className="tap-scale relative aspect-square overflow-hidden rounded-xl border-2 border-dashed border-border bg-surface-2">
       {src ? (
-        <img src={src} alt="" className="size-full object-cover" />
+        <>
+          <img src={src} alt="" className="size-full object-cover" />
+          <button
+            onClick={onRemove}
+            className="absolute right-1 top-1 grid size-5 place-items-center rounded-full bg-black/60"
+          >
+            <X className="size-3 text-white" />
+          </button>
+        </>
       ) : (
-        <span className="absolute inset-0 flex items-center justify-center text-xl text-muted-foreground/50">
-          +
-        </span>
+        <button
+          onClick={() => inputRef.current?.click()}
+          className="absolute inset-0 flex items-center justify-center text-muted-foreground/50"
+        >
+          <Plus className="size-6" />
+        </button>
       )}
-    </button>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={onPick}
+      />
+    </div>
   );
 }

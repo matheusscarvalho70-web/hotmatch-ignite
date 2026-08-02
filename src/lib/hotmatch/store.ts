@@ -11,6 +11,8 @@ export type AppState = {
   avatarUrl: string | null;
   coins: number;
   earnings: number;
+  xp: number;
+  level: string;
   unlocked: string[];
   vip: boolean;
   followed: string[];
@@ -39,6 +41,8 @@ function persist(s: AppState) {
         avatarUrl: s.avatarUrl,
         coins: s.coins,
         earnings: s.earnings,
+        xp: s.xp,
+        level: s.level,
         vip: s.vip,
       }),
     );
@@ -53,6 +57,8 @@ const defaultState: AppState = {
   avatarUrl: null,
   coins: 0,
   earnings: 0,
+  xp: 0,
+  level: "bronze",
   unlocked: [],
   vip: false,
   followed: [],
@@ -89,6 +95,8 @@ export const actions = {
     avatarUrl: string | null;
     coins: number;
     earnings: number;
+    xp?: number;
+    level?: string;
     vip?: boolean;
   }) {
     state = {
@@ -100,6 +108,8 @@ export const actions = {
       avatarUrl: p.avatarUrl,
       coins: p.coins,
       earnings: p.earnings,
+      xp: p.xp ?? state.xp,
+      level: p.level ?? state.level,
       vip: p.vip ?? false,
     };
     persist(state);

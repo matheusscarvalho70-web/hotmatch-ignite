@@ -24,7 +24,7 @@ import { VipModal } from "@/components/hotmatch/VipModal";
 import { StatsDrawer } from "@/components/hotmatch/StatsDrawer";
 import { SupportModal } from "@/components/hotmatch/SupportModal";
 import { actions, useAppState } from "@/lib/hotmatch/store";
-import { useProfile, useUserPhotos } from "@/hooks/use-profiles";
+import { useProfile, useUserPhotos, useProfileStats } from "@/hooks/use-profiles";
 
 export const Route = createFileRoute("/perfil")({
   head: () => ({
@@ -56,6 +56,7 @@ function ProfilePage() {
 
   const { profile, loading: profileLoading } = useProfile(profileId ?? "");
   const { publicPhotos, vipPhotos } = useUserPhotos(profileId ?? "");
+  const { stats } = useProfileStats(profileId);
 
   const displayName   = profile?.name      ?? storeName;
   const displayAge    = profile?.age        ?? null;
@@ -109,9 +110,9 @@ function ProfilePage() {
       </div>
 
       {isCreator ? (
-        <CreatorProfile vip={vip} navigate={navigate} onMenu={setModal} publicPhotos={livePublic} vipPhotos={liveVip} />
+        <CreatorProfile vip={vip} navigate={navigate} onMenu={setModal} publicPhotos={livePublic} vipPhotos={liveVip} stats={stats} />
       ) : (
-        <MaleProfile navigate={navigate} onMenu={setModal} />
+        <MaleProfile navigate={navigate} onMenu={setModal} publicPhotos={livePublic} stats={stats} />
       )}
 
       {/* Modals & drawers */}
@@ -134,21 +135,23 @@ function CreatorProfile({
   onMenu,
   publicPhotos,
   vipPhotos,
+  stats,
 }: {
   vip: boolean;
   navigate: ReturnType<typeof useNavigate>;
   onMenu: (k: ModalKey) => void;
   publicPhotos: string[];
   vipPhotos: { src: string; price: number }[];
+  stats: import("@/hooks/use-profiles").ProfileStats;
 }) {
   const [tab, setTab] = useState<"public" | "vip">("public");
 
   return (
     <>
       <div className="mt-5 grid grid-cols-3 gap-3 px-4">
-        <Stat icon={<Eye className="size-4 text-foreground/70" />} label="Visualizações" value="12,4k" />
-        <Stat icon={<Heart className="size-4 text-primary" />} label="Curtidas" value="3.208" />
-        <Stat icon={<Gift className="size-4 text-gold" />} label="Mimos" value="472" />
+        <Stat icon={<Eye className="size-4 text-foreground/70" />} label="Visualizações" value="0" />
+        <Stat icon={<Heart className="size-4 text-primary" />} label="Curtidas" value={stats.likesTotal.toLocaleString("pt-BR")} />
+        <Stat icon={<Gift className="size-4 text-gold" />} label="Mimos" value={stats.giftsReceived.toLocaleString("pt-BR")} />
       </div>
 
       <div className="mx-4 mt-6 flex rounded-full border border-border bg-surface p-1">
@@ -205,16 +208,20 @@ function CreatorProfile({
 function MaleProfile({
   navigate,
   onMenu,
+  publicPhotos,
+  stats,
 }: {
   navigate: ReturnType<typeof useNavigate>;
   onMenu: (k: ModalKey) => void;
+  publicPhotos: string[];
+  stats: import("@/hooks/use-profiles").ProfileStats;
 }) {
   const { coins, followed } = useAppState();
 
   return (
     <>
       <div className="mt-5 grid grid-cols-2 gap-3 px-4">
-        <Stat icon={<Heart className="size-4 text-primary" />} label="Interações" value="1.042" />
+        <Stat icon={<Heart className="size-4 text-primary" />} label="Interações" value={stats.likesTotal.toLocaleString("pt-BR")} />
         <Stat icon={<Users className="size-4 text-gold" />} label="Seguindo" value={String(followed.length)} />
       </div>
 
@@ -234,19 +241,18 @@ function MaleProfile({
         </button>
       </div>
 
-      <div className="mt-5 grid grid-cols-2 gap-1.5 px-4">
-        {publicGallery.slice(0, 4).map((src, i) => (
-          <img
-            key={i}
-            src={src}
-            alt={`Foto ${i + 1}`}
-            width={768}
-            height={1024}
-            loading="lazy"
-            className="aspect-square w-full rounded-xl object-cover"
-          />
-        ))}
-      </div>
+      {publicPhotos.length > 0 ? (
+        <div className="mt-5 grid grid-cols-2 gap-1.5 px-4">
+          {publicPhotos.slice(0, 4).map((src, i) => (
+            <img key={i} src={src} alt={`Foto ${i + 1}`} width={400} height={400} loading="lazy" className="aspect-square w-full rounded-xl object-cover" />
+          ))}
+        </div>
+      ) : (
+        <div className="mx-4 mt-5 flex flex-col items-center gap-2 rounded-2xl border border-dashed border-border bg-surface py-8 text-center">
+          <p className="text-sm font-semibold text-muted-foreground">Galeria vazia</p>
+          <p className="text-xs text-muted-foreground">Adicione fotos em "Editar perfil".</p>
+        </div>
+      )}
 
       <SettingsMenu navigate={navigate} onMenu={onMenu} />
     </>
