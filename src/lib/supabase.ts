@@ -78,3 +78,22 @@ export type DbFeedPost = {
   created_at: string;
   profiles?: DbProfile;
 };
+
+export type DbMatch = {
+  id: string;
+  user_id: string;
+  target_user_id: string;
+  action: "like" | "pass";
+  created_at: string;
+};
+
+export type DbTransaction = {
+  id: string;
+  user_id: string;
+  /** BRL monetary value (purchases, withdrawals). Zero for coin-only operations. */
+  amount: number;
+  /** Coin delta — positive for credits, negative for debits. */
+  coins_amount: number;
+  type: "purchase" | "gift_sent" | "gift_received" | "unlock" | "withdrawal" | string;
+  created_at: string;
+};

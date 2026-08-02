@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase, type DbProfile, type DbUserPhoto } from "@/lib/supabase";
 import { actions, useAppState } from "@/lib/hotmatch/store";
+import { loginOneSignal } from "@/lib/hotmatch/onesignal";
 
 export function useProfiles() {
   const [profiles, setProfiles] = useState<DbProfile[]>([]);
@@ -102,6 +103,8 @@ export function useSessionBootstrap() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         hydrateFromDb(session.user.id);
+        // Associate Supabase user ID with OneSignal for targeted push delivery
+        loginOneSignal(session.user.id);
       }
     });
 
@@ -113,6 +116,8 @@ export function useSessionBootstrap() {
           actions.signOut();
         } else if (event === "SIGNED_IN" && session?.user) {
           await hydrateFromDb(session.user.id);
+          // Associate Supabase user ID with OneSignal for targeted push delivery
+          loginOneSignal(session.user.id);
         }
       })();
     });

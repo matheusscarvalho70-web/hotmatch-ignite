@@ -16,6 +16,11 @@ interface OneSignalPageSDK {
     notifyButton?: { enable: boolean };
     [key: string]: unknown;
   }): Promise<void>;
+  /** Associate the current device/subscription with an external user identity.
+   *  Call immediately after successful Supabase Auth sign-in so push notifications
+   *  can be targeted by Supabase user ID on the OneSignal dashboard. */
+  login(externalId: string): Promise<void>;
+  logout(): Promise<void>;
   Notifications: {
     requestPermission(): Promise<void>;
     permissionNative: NotificationPermission;
@@ -26,6 +31,24 @@ interface OneSignalPageSDK {
       optedIn: boolean;
     };
   };
+}
+
+/**
+ * Associate the authenticated Supabase user ID with the OneSignal push subscription.
+ * Call this immediately after every successful sign-in so the OneSignal dashboard can
+ * target push notifications by Supabase user ID.
+ */
+export function loginOneSignal(userId: string): void {
+  if (typeof window === "undefined") return;
+  const deferred = window.OneSignalDeferred;
+  if (!deferred) return;
+  deferred.push(async (OneSignal) => {
+    try {
+      await OneSignal.login(userId);
+    } catch (e) {
+      console.warn("[OneSignal] login() failed:", e);
+    }
+  });
 }
 
 /** Call once, early in the app lifecycle (e.g. in a root useEffect). */
