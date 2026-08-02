@@ -22,6 +22,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { actions, useAppState } from "@/lib/hotmatch/store";
 import { supabase } from "@/lib/supabase";
+import { registerPush } from "@/lib/hotmatch/onesignal";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/bem-vindo")({
@@ -203,9 +204,14 @@ function LoginDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: 
       vip: false,
     });
 
+    // Request push permission and persist player ID (non-blocking)
+    registerPush(data.id).catch((e) =>
+      console.warn("[OneSignal] registerPush on login failed:", e),
+    );
+
     onOpenChange(false);
     toast.success(`Bem-vindo de volta, ${data.name}! 🔥`);
-    navigate({ to: data.gender === "female" ? "/perfil" : "/" });
+    navigate({ to: "/" });
   };
 
   return (
@@ -333,7 +339,18 @@ function SignupFlow({ open, onOpenChange, gender }: {
     // CPF is optional for creators (nullable column doesn't exist — we simply don't send it)
     setSaving(true);
     try {
-      const payload = {
+      const payload: {
+        gender: string;
+        name: string;
+        age: number;
+        bio: string;
+        location: string;
+        avatar_url: string | null;
+        coin_balance: number;
+        earnings_brl: number;
+        is_verified: boolean;
+        is_demo: boolean;
+      } = {
         gender,
         name: name.trim() || (isCreator ? "Criadora" : "Usuário"),
         age: dob ? calcAge(dob) : (isCreator ? 22 : 25),
@@ -341,10 +358,9 @@ function SignupFlow({ open, onOpenChange, gender }: {
           ? "Criadora de conteúdo exclusivo no HotMatch 🔥"
           : "Novo no HotMatch. Aqui para se conectar!",
         location: "Brasil",
-        avatar_url: null as string | null,
-        xp: 0,
-        level: "bronze",
+        avatar_url: null,
         coin_balance: isCreator ? 0 : 320,
+        earnings_brl: 0,
         is_verified: true,
         is_demo: false,
       };
@@ -372,6 +388,11 @@ function SignupFlow({ open, onOpenChange, gender }: {
         earnings: Number(data.earnings_brl),
         vip: false,
       });
+
+      // Request push permission and persist player ID (non-blocking)
+      registerPush(data.id).catch((e) =>
+        console.warn("[OneSignal] registerPush failed:", e),
+      );
 
       // Fire-and-forget welcome notification — don't let failure block redirect
       supabase.from("notifications").insert({

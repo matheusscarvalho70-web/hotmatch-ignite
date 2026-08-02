@@ -14,6 +14,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { BottomNav } from "@/components/hotmatch/BottomNav";
 import { useSessionBootstrap } from "@/hooks/use-profiles";
 import { useAppState } from "@/lib/hotmatch/store";
+import { initOneSignal } from "@/lib/hotmatch/onesignal";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
@@ -111,6 +112,8 @@ function RootShell({ children }: { children: ReactNode }) {
     <html lang="pt-BR" className="dark">
       <head>
         <HeadContent />
+        {/* OneSignal Web Push SDK */}
+        <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer />
       </head>
       <body>
         {children}
@@ -127,6 +130,9 @@ function RootComponent() {
 
   // Bootstrap session from DB on every app load
   useSessionBootstrap();
+
+  // Initialize OneSignal Web Push (idempotent — safe on every render)
+  useEffect(() => { initOneSignal(); }, []);
 
   return (
     <QueryClientProvider client={queryClient}>

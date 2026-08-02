@@ -19,6 +19,7 @@ export type DbProfile = {
   earnings_brl: number;
   is_verified: boolean;
   is_demo: boolean;
+  onesignal_player_id: string | null;
   created_at: string;
 };
 
