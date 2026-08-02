@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check, Coins, Crown, Heart, Lock, MessageCircle, Play, Plus, Send, Upload, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { TopBar } from "@/components/hotmatch/TopBar";
@@ -232,20 +232,55 @@ function PostModal({ onClose, profileId, onPosted }: {
   const [price, setPrice] = useState(60);
   const [caption, setCaption] = useState("");
   const [saving, setSaving] = useState(false);
+  const [file, setFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  function onFilePick(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setFile(f);
+    setPreview(URL.createObjectURL(f));
+  }
 
   async function publish() {
     if (!profileId) { toast.error("Faça login primeiro."); return; }
+    if (!file) { toast.error("Selecione uma imagem ou vídeo antes de publicar."); return; }
     setSaving(true);
+
+    const path = `feed/${profileId}/${Date.now()}_${file.name}`;
+    const { data: storageData, error: storageError } = await supabase.storage
+      .from("photos")
+      .upload(path, file, { upsert: true, contentType: file.type });
+
+    if (storageError || !storageData) {
+      toast.error("Erro ao fazer upload da mídia. Tente novamente.");
+      setSaving(false);
+      return;
+    }
+
+    const { data: { publicUrl } } = supabase.storage.from("photos").getPublicUrl(storageData.path);
+    const mediaType = file.type.startsWith("video/") ? "vídeo" : "foto";
+
     const { data, error } = await supabase
       .from("feed_posts")
-      .insert({ author_id: profileId, caption: caption.trim() || null, media_url: "https://images.pexels.com/photos/20459105/pexels-photo-20459105.jpeg?auto=compress&cs=tinysrgb&w=600", media_type: "foto", is_locked: price > 0, coin_price: price, likes: 0 })
+      .insert({
+        author_id: profileId,
+        caption: caption.trim() || null,
+        media_url: publicUrl,
+        media_type: mediaType,
+        is_locked: price > 0,
+        coin_price: price,
+        likes: 0,
+      })
       .select("*, profiles!inner(*)")
       .single();
+
     setSaving(false);
-    if (error || !data) { toast.error("Erro ao publicar."); return; }
+    if (error || !data) { toast.error("Erro ao publicar. Tente novamente."); return; }
     onPosted({ ...(data as DbFeedPost), author: (data as Record<string, unknown>).profiles as DbProfile });
     onClose();
-    toast("Mídia VIP publicada ✨", { description: `Preço: ${price} moedas` });
+    toast("Mídia VIP publicada ✨", { description: `Preço: ${price === 0 ? "Grátis" : `${price} moedas`}` });
   }
 
   return (
@@ -253,22 +288,42 @@ function PostModal({ onClose, profileId, onPosted }: {
       <div className="glass-panel w-full max-w-[30rem] animate-in slide-in-from-bottom rounded-t-[2rem] p-5 pb-[calc(env(safe-area-inset-bottom)+1.5rem)]">
         <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-border" />
         <h2 className="text-lg font-extrabold">Postar Mídia VIP</h2>
-        <button className="mt-4 flex w-full flex-col items-center gap-2 rounded-2xl border border-dashed border-gold/40 bg-gold/5 px-4 py-8">
-          <Upload className="size-6 text-gold" />
-          <span className="text-sm font-semibold text-gold">Selecionar imagem ou vídeo</span>
-          <span className="text-xs text-muted-foreground">MP4, JPG ou PNG até 200 MB</span>
+        <button
+          onClick={() => inputRef.current?.click()}
+          className="mt-4 flex w-full flex-col items-center gap-2 rounded-2xl border border-dashed border-gold/40 bg-gold/5 px-4 py-8"
+        >
+          {preview ? (
+            file?.type.startsWith("video/") ? (
+              <video src={preview} className="max-h-48 rounded-xl object-contain" controls />
+            ) : (
+              <img src={preview} alt="preview" className="max-h-48 rounded-xl object-contain" />
+            )
+          ) : (
+            <>
+              <Upload className="size-6 text-gold" />
+              <span className="text-sm font-semibold text-gold">Selecionar imagem ou vídeo</span>
+              <span className="text-xs text-muted-foreground">MP4, JPG ou PNG até 200 MB</span>
+            </>
+          )}
         </button>
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/*,video/*"
+          className="hidden"
+          onChange={onFilePick}
+        />
         <label className="mt-4 block text-xs font-semibold text-muted-foreground">Legenda</label>
         <input value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="Escreva uma chamada irresistível..."
           className="mt-1.5 w-full rounded-2xl border border-input bg-background px-4 py-3 text-sm outline-none focus:border-primary" />
         <div className="mt-4 flex items-center justify-between">
           <span className="text-xs font-semibold text-muted-foreground">Preço de desbloqueio</span>
-          <span className="text-sm font-bold text-gold">{price} moedas</span>
+          <span className="text-sm font-bold text-gold">{price === 0 ? "Grátis" : `${price} moedas`}</span>
         </div>
         <input type="range" min={0} max={300} step={10} value={price} onChange={(e) => setPrice(Number(e.target.value))} className="mt-2 w-full accent-[oklch(0.86_0.16_92)]" />
         <div className="mt-5 flex gap-3">
           <button onClick={onClose} className="tap-scale flex-1 rounded-full border border-border bg-surface-2 py-3 text-sm font-semibold">Cancelar</button>
-          <button onClick={publish} disabled={saving} className="tap-scale flex-[1.4] rounded-full bg-gradient-gold py-3 text-sm font-bold text-gold-foreground shadow-gold disabled:opacity-50">
+          <button onClick={publish} disabled={saving || !file} className="tap-scale flex-[1.4] rounded-full bg-gradient-gold py-3 text-sm font-bold text-gold-foreground shadow-gold disabled:opacity-50">
             {saving ? "Publicando..." : "Publicar agora"}
           </button>
         </div>

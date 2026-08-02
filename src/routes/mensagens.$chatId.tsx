@@ -9,10 +9,9 @@ import {
   Mic,
   MicOff,
   MoreVertical,
-  Phone,
   Play,
   Send,
-  Video,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { gifts } from "@/lib/hotmatch/data";
@@ -25,10 +24,7 @@ export const Route = createFileRoute("/mensagens/$chatId")({
   head: () => ({
     meta: [
       { title: "Conversa — HotMatch" },
-      {
-        name: "description",
-        content: "Chat privado HotMatch com áudio, mídias exclusivas pagas e mimos virtuais.",
-      },
+      { name: "description", content: "Chat privado HotMatch com áudio, mídias exclusivas pagas e mimos virtuais." },
       { property: "og:title", content: "Conversa — HotMatch" },
       { property: "og:description", content: "Mensagens, áudios, mídias privadas e presentes." },
     ],
@@ -45,10 +41,10 @@ const AUTO_REPLIES = [
 
 function Chat() {
   const { chatId } = useParams({ from: "/mensagens/$chatId" });
-  const { unlocked, profileId } = useAppState();
+  const { unlocked, profileId, gender } = useAppState();
+  const isCreator = gender === "female";
   const myId = profileId ?? "";
 
-  // chatId is the partner's DB uuid
   const partnerId = chatId;
   const { profiles: dbProfiles } = useProfiles();
   const dbPartner = dbProfiles.find((p) => p.id === partnerId);
@@ -56,10 +52,11 @@ function Chat() {
   const partnerName   = dbPartner?.name      ?? "Conversa";
   const partnerAvatar = dbPartner?.avatar_url ?? null;
 
-  const { messages, loading, sendText, sendAudio, sendGift } = useChat(partnerId);
+  const { messages, loading, sendText, sendAudio, sendGift, sendLockedMedia } = useChat(partnerId);
 
   const [text, setText] = useState("");
   const [giftOpen, setGiftOpen] = useState(false);
+  const [privMediaOpen, setPrivMediaOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [reportSubject, setReportSubject] = useState("");
@@ -72,9 +69,6 @@ function Chat() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
-
-  const now = () =>
-    new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 
   async function handleSend() {
     if (!text.trim()) return;
@@ -119,27 +113,18 @@ function Chat() {
   }
 
   async function submitReport() {
-    if (!reportSubject.trim()) {
-      toast.error("Informe o assunto da denúncia.");
-      return;
-    }
+    if (!reportSubject.trim()) { toast.error("Informe o assunto da denúncia."); return; }
     await supabase.from("reports").insert({
-      reporter_id: myId || null,
-      reported_user_id: partnerId || null,
-      subject: reportSubject,
-      description: reportDesc,
+      reporter_id: myId || null, reported_user_id: partnerId || null,
+      subject: reportSubject, description: reportDesc,
     });
-    setReportOpen(false);
-    setReportSubject("");
-    setReportDesc("");
-    toast("Denúncia enviada com sucesso.", {
-      description: "Nossa equipe analisará o caso. 🛡️",
-      className: "bg-white text-zinc-900 border border-zinc-200 shadow-xl rounded-2xl",
-    });
+    setReportOpen(false); setReportSubject(""); setReportDesc("");
+    toast("Denúncia enviada com sucesso.", { description: "Nossa equipe analisará o caso. 🛡️" });
   }
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
+      {/* Header */}
       <header className="glass-panel sticky top-0 z-40 flex items-center gap-3 px-3 pb-3 pt-[calc(env(safe-area-inset-top)+0.75rem)]">
         <Link to="/mensagens" className="tap-scale grid size-9 place-items-center rounded-full">
           <ArrowLeft className="size-5" />
@@ -153,23 +138,8 @@ function Chat() {
           <p className="truncate text-sm font-bold">{partnerName}</p>
           <p className="text-[11px] text-primary">online agora</p>
         </div>
-        <button
-          onClick={() => toast("Chamada de áudio iniciada")}
-          className="tap-scale grid size-9 place-items-center rounded-full bg-surface-2"
-        >
-          <Phone className="size-4" />
-        </button>
-        <button
-          onClick={() => toast("Chamada de vídeo iniciada")}
-          className="tap-scale grid size-9 place-items-center rounded-full bg-surface-2"
-        >
-          <Video className="size-4" />
-        </button>
         <div className="relative">
-          <button
-            onClick={() => setMenuOpen((v) => !v)}
-            className="tap-scale grid size-9 place-items-center rounded-full bg-surface-2"
-          >
+          <button onClick={() => setMenuOpen((v) => !v)} className="tap-scale grid size-9 place-items-center rounded-full bg-surface-2">
             <MoreVertical className="size-4" />
           </button>
           {menuOpen && (
@@ -188,17 +158,11 @@ function Chat() {
         </div>
       </header>
 
+      {/* Messages */}
       <div className="flex-1 space-y-3 px-4 py-4">
-        {loading && (
-          <div className="flex justify-center py-8">
-            <span className="text-sm text-muted-foreground">Carregando conversa…</span>
-          </div>
-        )}
+        {loading && <div className="flex justify-center py-8"><span className="text-sm text-muted-foreground">Carregando conversa…</span></div>}
         {messages.map((m) => (
-          <Bubble
-            key={m.id}
-            m={m}
-            unlocked={unlocked.includes(m.id)}
+          <Bubble key={m.id} m={m} unlocked={unlocked.includes(m.id)}
             onUnlock={() => {
               if (actions.unlock(m.id, m.price ?? 0)) toast("Mídia privada liberada 🔓");
               else toast.error("Saldo insuficiente", { description: "Recarregue na Loja VIP." });
@@ -208,41 +172,41 @@ function Chat() {
         <div ref={bottomRef} />
       </div>
 
+      {/* Recording indicator */}
       {recording && (
         <div className="mx-4 mb-2 flex items-center gap-3 rounded-2xl border border-primary/40 bg-primary/10 px-4 py-3">
           <span className="relative grid size-3 place-items-center">
             <span className="absolute size-3 animate-ping rounded-full bg-primary/60" />
             <span className="size-2 rounded-full bg-primary" />
           </span>
-          <span className="flex-1 text-sm font-semibold text-primary">
-            Gravando áudio... 0:{String(recordSecs).padStart(2, "0")}
-          </span>
+          <span className="flex-1 text-sm font-semibold text-primary">Gravando áudio... 0:{String(recordSecs).padStart(2, "0")}</span>
           <span className="flex items-center gap-[2px]">
             {Array.from({ length: 20 }).map((_, i) => (
-              <span
-                key={i}
-                className="w-0.5 rounded-full bg-primary"
-                style={{ height: `${6 + ((recordSecs * 3 + i * 7) % 16)}px`, transition: "height 0.15s ease" }}
-              />
+              <span key={i} className="w-0.5 rounded-full bg-primary" style={{ height: `${6 + ((recordSecs * 3 + i * 7) % 16)}px`, transition: "height 0.15s ease" }} />
             ))}
           </span>
         </div>
       )}
 
+      {/* Input bar — gender-aware */}
       <div className="glass-panel sticky bottom-0 flex items-center gap-2 px-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-3">
-        <button
-          onClick={() => toast("Enviar mídia privada paga", { description: "Defina o valor em moedas." })}
-          className="tap-scale grid size-10 shrink-0 place-items-center rounded-full bg-surface-2"
-        >
-          <ImagePlus className="size-5" />
-        </button>
-        <button
-          onClick={() => setGiftOpen(true)}
-          className="tap-scale grid size-10 shrink-0 place-items-center rounded-full bg-gradient-gold shadow-gold"
-          aria-label="Enviar mimo"
-        >
-          <Gift className="size-5 text-gold-foreground" />
-        </button>
+        {isCreator ? (
+          <button
+            onClick={() => setPrivMediaOpen(true)}
+            className="tap-scale grid size-10 shrink-0 place-items-center rounded-full bg-gradient-hot shadow-hot"
+            aria-label="Enviar mídia privada paga"
+          >
+            <Lock className="size-5 text-primary-foreground" />
+          </button>
+        ) : (
+          <button
+            onClick={() => setGiftOpen(true)}
+            className="tap-scale grid size-10 shrink-0 place-items-center rounded-full bg-gradient-gold shadow-gold"
+            aria-label="Enviar mimo"
+          >
+            <Gift className="size-5 text-gold-foreground" />
+          </button>
+        )}
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -251,25 +215,15 @@ function Chat() {
           className="min-w-0 flex-1 rounded-full border border-input bg-background px-4 py-2.5 text-sm outline-none focus:border-primary"
         />
         {text.trim() ? (
-          <button
-            onClick={handleSend}
-            className="tap-scale grid size-10 shrink-0 place-items-center rounded-full bg-gradient-hot shadow-hot"
-          >
+          <button onClick={handleSend} className="tap-scale grid size-10 shrink-0 place-items-center rounded-full bg-gradient-hot shadow-hot">
             <Send className="size-5 text-primary-foreground" />
           </button>
         ) : recording ? (
-          <button
-            onPointerUp={stopRecording}
-            className="tap-scale grid size-10 shrink-0 place-items-center rounded-full bg-primary shadow-hot"
-          >
+          <button onPointerUp={stopRecording} className="tap-scale grid size-10 shrink-0 place-items-center rounded-full bg-primary shadow-hot">
             <MicOff className="size-5 text-primary-foreground" />
           </button>
         ) : (
-          <button
-            onPointerDown={startRecording}
-            onPointerUp={stopRecording}
-            className="tap-scale grid size-10 shrink-0 place-items-center rounded-full bg-gradient-hot shadow-hot"
-          >
+          <button onPointerDown={startRecording} onPointerUp={stopRecording} className="tap-scale grid size-10 shrink-0 place-items-center rounded-full bg-gradient-hot shadow-hot">
             <Mic className="size-5 text-primary-foreground" />
           </button>
         )}
@@ -277,14 +231,8 @@ function Chat() {
 
       {/* Report modal */}
       {reportOpen && (
-        <div
-          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 px-5 backdrop-blur-sm"
-          onClick={() => setReportOpen(false)}
-        >
-          <div
-            className="w-full max-w-[22rem] overflow-hidden rounded-3xl border border-border bg-surface"
-            onClick={(e) => e.stopPropagation()}
-          >
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 px-5 backdrop-blur-sm" onClick={() => setReportOpen(false)}>
+          <div className="w-full max-w-[22rem] overflow-hidden rounded-3xl border border-border bg-surface" onClick={(e) => e.stopPropagation()}>
             <div className="border-b border-border px-5 py-4">
               <h2 className="text-base font-extrabold">Denunciar perfil</h2>
               <p className="mt-0.5 text-xs text-muted-foreground">Nossa equipe analisa em até 24h.</p>
@@ -292,60 +240,35 @@ function Chat() {
             <div className="space-y-4 p-5">
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-muted-foreground">Assunto</label>
-                <input
-                  type="text"
-                  value={reportSubject}
-                  onChange={(e) => setReportSubject(e.target.value)}
+                <input type="text" value={reportSubject} onChange={(e) => setReportSubject(e.target.value)}
                   placeholder="Ex: Conteúdo impróprio, spam..."
-                  className="w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground outline-none focus:border-primary"
-                />
+                  className="w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground outline-none focus:border-primary" />
               </div>
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-muted-foreground">Descrição do problema</label>
-                <textarea
-                  value={reportDesc}
-                  onChange={(e) => setReportDesc(e.target.value)}
-                  rows={4}
+                <textarea value={reportDesc} onChange={(e) => setReportDesc(e.target.value)} rows={4}
                   placeholder="Descreva o que aconteceu..."
-                  className="w-full resize-none rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground outline-none focus:border-primary"
-                />
+                  className="w-full resize-none rounded-xl border border-border bg-background px-4 py-2.5 text-sm text-foreground outline-none focus:border-primary" />
               </div>
               <div className="flex gap-3">
-                <button
-                  onClick={() => setReportOpen(false)}
-                  className="flex-1 rounded-full border border-border py-3 text-sm font-semibold text-muted-foreground"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={submitReport}
-                  className="tap-scale flex-1 rounded-full bg-gradient-hot py-3 text-sm font-extrabold text-primary-foreground shadow-hot"
-                >
-                  Enviar Denúncia
-                </button>
+                <button onClick={() => setReportOpen(false)} className="flex-1 rounded-full border border-border py-3 text-sm font-semibold text-muted-foreground">Cancelar</button>
+                <button onClick={submitReport} className="tap-scale flex-1 rounded-full bg-gradient-hot py-3 text-sm font-extrabold text-primary-foreground shadow-hot">Enviar Denúncia</button>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {giftOpen && (
-        <div
-          className="fixed inset-0 z-[60] flex items-end justify-center bg-black/70 backdrop-blur-sm"
-          onClick={() => setGiftOpen(false)}
-        >
-          <div
-            className="glass-panel w-full max-w-[30rem] rounded-t-[2rem] p-5 pb-[calc(env(safe-area-inset-bottom)+1.5rem)]"
-            onClick={(e) => e.stopPropagation()}
-          >
+      {/* Gift panel — male users only */}
+      {!isCreator && giftOpen && (
+        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/70 backdrop-blur-sm" onClick={() => setGiftOpen(false)}>
+          <div className="glass-panel w-full max-w-[30rem] rounded-t-[2rem] p-5 pb-[calc(env(safe-area-inset-bottom)+1.5rem)]" onClick={(e) => e.stopPropagation()}>
             <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-border" />
             <h2 className="text-lg font-extrabold">
               Enviar mimo para{" "}
               <span className="text-gradient-gold">{partnerName}</span>
             </h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Presentes aumentam suas chances de resposta em até 4×.
-            </p>
+            <p className="mt-1 text-sm text-muted-foreground">Presentes aumentam suas chances de resposta em até 4×.</p>
             <div className="mt-4 grid grid-cols-3 gap-3">
               {gifts.map((g) => (
                 <button
@@ -358,8 +281,7 @@ function Chat() {
                       if (myId && partnerId) {
                         setTimeout(async () => {
                           await supabase.from("chat_messages").insert({
-                            sender_id: partnerId,
-                            receiver_id: myId,
+                            sender_id: partnerId, receiver_id: myId,
                             content: `Amooooo! Obrigada pelo ${g.name} ${g.emoji} 😍`,
                             message_kind: "text",
                           });
@@ -383,6 +305,88 @@ function Chat() {
           </div>
         </div>
       )}
+
+      {/* Private media modal — creators only */}
+      {isCreator && privMediaOpen && (
+        <PrivateMediaModal
+          onClose={() => setPrivMediaOpen(false)}
+          onSend={async (url, price) => {
+            await sendLockedMedia(url, price);
+            setPrivMediaOpen(false);
+            toast("Mídia privada enviada 🔒", { description: `Preço: ${price} moedas` });
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function PrivateMediaModal({
+  onClose,
+  onSend,
+}: {
+  onClose: () => void;
+  onSend: (url: string, price: number) => void;
+}) {
+  const [price, setPrice] = useState(60);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  async function handleSend() {
+    if (!file) { toast.error("Selecione uma foto ou vídeo."); return; }
+    setUploading(true);
+    const path = `private/${Date.now()}_${file.name}`;
+    const { data, error } = await supabase.storage.from("photos").upload(path, file, { upsert: true, contentType: file.type });
+    if (error || !data) {
+      toast.error("Erro ao fazer upload da mídia.");
+      setUploading(false);
+      return;
+    }
+    const { data: { publicUrl } } = supabase.storage.from("photos").getPublicUrl(data.path);
+    onSend(publicUrl, price);
+    setUploading(false);
+  }
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/70 backdrop-blur-sm" onClick={onClose}>
+      <div className="glass-panel w-full max-w-[30rem] rounded-t-[2rem] p-5 pb-[calc(env(safe-area-inset-bottom)+1.5rem)]" onClick={(e) => e.stopPropagation()}>
+        <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-border" />
+        <h2 className="text-lg font-extrabold">Enviar mídia privada 🔒</h2>
+        <p className="mt-1 text-sm text-muted-foreground">Defina um preço em moedas para desbloquear.</p>
+        <button onClick={() => inputRef.current?.click()}
+          className="mt-4 flex w-full flex-col items-center gap-2 rounded-2xl border border-dashed border-primary/40 bg-primary/5 px-4 py-6">
+          {preview ? (
+            <img src={preview} alt="preview" className="max-h-48 rounded-xl object-contain" />
+          ) : (
+            <>
+              <ImagePlus className="size-6 text-primary" />
+              <span className="text-sm font-semibold text-primary">Selecionar foto ou vídeo</span>
+            </>
+          )}
+        </button>
+        <input ref={inputRef} type="file" accept="image/*,video/*" className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) { setFile(f); setPreview(URL.createObjectURL(f)); }
+          }}
+        />
+        <div className="mt-4 flex items-center justify-between">
+          <span className="text-xs font-semibold text-muted-foreground">Preço de desbloqueio</span>
+          <span className="text-sm font-bold text-gold">{price} moedas</span>
+        </div>
+        <input type="range" min={10} max={300} step={10} value={price}
+          onChange={(e) => setPrice(Number(e.target.value))}
+          className="mt-2 w-full accent-[oklch(0.86_0.16_92)]" />
+        <div className="mt-5 flex gap-3">
+          <button onClick={onClose} className="tap-scale flex-1 rounded-full border border-border bg-surface-2 py-3 text-sm font-semibold">Cancelar</button>
+          <button onClick={handleSend} disabled={uploading || !file}
+            className="tap-scale flex-[1.4] rounded-full bg-gradient-hot py-3 text-sm font-bold text-primary-foreground shadow-hot disabled:opacity-50">
+            {uploading ? "Enviando..." : "Enviar agora"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -427,16 +431,11 @@ function Bubble({
           </button>
           <span className="flex h-6 flex-1 items-end gap-[3px]">
             {Array.from({ length: 20 }).map((_, i) => (
-              <span
-                key={i}
-                className={`w-[2.5px] rounded-full bg-current transition-opacity ${playing ? "opacity-100" : "opacity-60"}`}
-                style={{ height: `${6 + ((i * 7) % 18)}px` }}
-              />
+              <span key={i} className={`w-[2.5px] rounded-full bg-current transition-opacity ${playing ? "opacity-100" : "opacity-60"}`}
+                style={{ height: `${6 + ((i * 7) % 18)}px` }} />
             ))}
           </span>
-          <span className="text-[11px] tabular-nums opacity-80">
-            0:{String(m.seconds ?? 0).padStart(2, "0")}
-          </span>
+          <span className="text-[11px] tabular-nums opacity-80">0:{String(m.seconds ?? 0).padStart(2, "0")}</span>
         </div>
         <p className="mt-0.5 text-right text-[10px] opacity-60">{m.time}</p>
       </div>
@@ -447,14 +446,8 @@ function Bubble({
       <div className="max-w-[78%] overflow-hidden rounded-3xl rounded-bl-lg border border-gold/30 bg-surface-2">
         <div className="relative aspect-square w-full">
           {m.media ? (
-            <img
-              src={m.media}
-              alt="Mídia privada"
-              width={768}
-              height={1024}
-              loading="lazy"
-              className={`size-full object-cover ${unlocked ? "" : "scale-110 blur-2xl brightness-50"}`}
-            />
+            <img src={m.media} alt="Mídia privada" width={768} height={1024} loading="lazy"
+              className={`size-full object-cover ${unlocked ? "" : "scale-110 blur-2xl brightness-50"}`} />
           ) : (
             <div className={`size-full bg-surface-2 ${unlocked ? "" : "blur-2xl brightness-50"}`} />
           )}
@@ -467,10 +460,8 @@ function Bubble({
         <div className="space-y-2 p-3">
           <p className="text-sm">{m.text}</p>
           {!unlocked && (
-            <button
-              onClick={onUnlock}
-              className="tap-scale flex w-full items-center justify-center gap-2 rounded-full bg-gradient-gold py-2.5 text-xs font-bold text-gold-foreground"
-            >
+            <button onClick={onUnlock}
+              className="tap-scale flex w-full items-center justify-center gap-2 rounded-full bg-gradient-gold py-2.5 text-xs font-bold text-gold-foreground">
               <Coins className="size-4" />
               Desbloquear por {m.price} moedas
             </button>

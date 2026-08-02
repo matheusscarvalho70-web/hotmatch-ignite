@@ -359,7 +359,7 @@ function SignupFlow({ open, onOpenChange, gender }: {
           : "Novo no HotMatch. Aqui para se conectar!",
         location: "Brasil",
         avatar_url: null,
-        coin_balance: isCreator ? 0 : 320,
+        coin_balance: 0,
         earnings_brl: 0,
         is_verified: true,
         is_demo: false,

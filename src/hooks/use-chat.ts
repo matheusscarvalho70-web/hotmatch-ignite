@@ -90,6 +90,17 @@ export function useChat(partnerId: string) {
     });
   }
 
+  async function sendLockedMedia(mediaUrl: string, price: number) {
+    if (!myId) return;
+    await supabase.from("chat_messages").insert({
+      sender_id: myId, receiver_id: partnerId,
+      message_kind: "locked",
+      media_url: mediaUrl,
+      unlock_price: price,
+      content: "Mídia privada 🔒",
+    });
+  }
+
   async function sendGift(emoji: string, name: string, price: number) {
     if (!myId) return;
     await supabase.from("chat_messages").insert({
@@ -98,5 +109,5 @@ export function useChat(partnerId: string) {
     });
   }
 
-  return { messages, loading, sendText, sendAudio, sendGift, myId };
+  return { messages, loading, sendText, sendAudio, sendGift, sendLockedMedia, myId };
 }

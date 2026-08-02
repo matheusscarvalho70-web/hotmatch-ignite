@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ArrowDownToLine,
   Check,
@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { TopBar } from "@/components/hotmatch/TopBar";
 import { coinPacks } from "@/lib/hotmatch/data";
 import { actions, formatBRL, useAppState } from "@/lib/hotmatch/store";
+import { supabase } from "@/lib/supabase";
 
 export const Route = createFileRoute("/loja")({
   head: () => ({
@@ -168,15 +169,15 @@ function BuyerView() {
               </button>
               <button
                 onClick={() => {
-                  actions.addCoins(checkout.coins + checkout.bonus);
                   setCheckout(null);
-                  toast("Pagamento confirmado ⚡", {
-                    description: `+${checkout.coins + checkout.bonus} moedas na sua carteira`,
+                  toast("Aguardando confirmação Pix ⏳", {
+                    description: "As moedas serão creditadas automaticamente após a confirmação do pagamento.",
                   });
                 }}
-                className="tap-scale flex-[1.4] rounded-full bg-gradient-hot py-3 text-sm font-bold text-primary-foreground shadow-hot"
+                className="tap-scale flex-[1.4] rounded-full bg-gradient-hot py-3 text-sm font-bold text-primary-foreground shadow-hot opacity-50 cursor-not-allowed"
+                disabled
               >
-                Já paguei
+                Aguardando Pix…
               </button>
             </div>
           </div>
@@ -187,10 +188,31 @@ function BuyerView() {
 }
 
 function CreatorView() {
-  const { earnings } = useAppState();
+  const { earnings, profileId } = useAppState();
   const [open, setOpen] = useState(false);
   const [key, setKey] = useState("");
   const [value, setValue] = useState("");
+  const [salesToday, setSalesToday] = useState(0);
+  const [giftsTotal, setGiftsTotal] = useState(0);
+
+  useEffect(() => {
+    if (!profileId) return;
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const iso = todayStart.toISOString();
+    supabase
+      .from("feed_posts")
+      .select("id", { count: "exact" })
+      .eq("author_id", profileId)
+      .gte("created_at", iso)
+      .then(({ count }) => setSalesToday(count ?? 0));
+    supabase
+      .from("chat_messages")
+      .select("id", { count: "exact" })
+      .eq("receiver_id", profileId)
+      .eq("message_kind", "gift")
+      .then(({ count }) => setGiftsTotal(count ?? 0));
+  }, [profileId]);
 
   return (
     <>
@@ -200,9 +222,9 @@ function CreatorView() {
           Saldo acumulado
         </p>
         <p className="mt-1 text-4xl font-extrabold text-gradient-gold">{formatBRL(earnings)}</p>
-        <div className="mt-3 flex items-center gap-1.5 text-xs font-semibold text-primary">
+        <div className="mt-3 flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
           <TrendingUp className="size-4" />
-          +18% em relação à semana passada
+          Saldo acumulado de vendas e mimos
         </div>
         <button
           onClick={() => setOpen(true)}
@@ -214,8 +236,8 @@ function CreatorView() {
       </section>
 
       <div className="mt-4 grid grid-cols-2 gap-3">
-        <Stat icon={<Zap className="size-4 text-primary" />} label="Vendas hoje" value="12" />
-        <Stat icon={<Sparkles className="size-4 text-gold" />} label="Mimos recebidos" value="47" />
+        <Stat icon={<Zap className="size-4 text-primary" />} label="Posts hoje" value={String(salesToday)} />
+        <Stat icon={<Sparkles className="size-4 text-gold" />} label="Mimos recebidos" value={String(giftsTotal)} />
       </div>
 
       <h2 className="mb-2 mt-6 text-sm font-extrabold">Transações recentes</h2>
