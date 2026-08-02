@@ -45,15 +45,11 @@ function WelcomePage() {
   const navigate = useNavigate();
   const { profileId } = useAppState();
 
-  // Already logged in — go straight to app
   useEffect(() => {
     if (profileId) navigate({ to: "/", replace: true });
   }, [profileId, navigate]);
 
-  const start = (g: Gender) => {
-    setGender(g);
-    setSignupOpen(true);
-  };
+  const start = (g: Gender) => { setGender(g); setSignupOpen(true); };
 
   return (
     <div className="min-h-screen pb-16">
@@ -177,14 +173,13 @@ function LoginDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: 
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) { toast.error("Informe seu nome ou e-mail."); return; }
+    if (!name.trim()) { toast.error("Informe seu nome."); return; }
     setLoading(true);
 
     const { data, error } = await supabase
       .from("profiles")
       .select("*")
-      .eq("is_demo", false)
-      .ilike("name", `%${name.trim().split("@")[0]}%`)
+      .ilike("name", `%${name.trim()}%`)
       .maybeSingle();
 
     setLoading(false);
@@ -201,14 +196,10 @@ function LoginDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: 
       avatarUrl: data.avatar_url,
       coins: data.coin_balance,
       earnings: Number(data.earnings_brl),
-      vip: false,
+      vip: data.is_verified ?? false,
     });
 
-    // Request push permission and persist player ID (non-blocking)
-    registerPush(data.id).catch((e) =>
-      console.warn("[OneSignal] registerPush on login failed:", e),
-    );
-
+    registerPush(data.id).catch((e) => console.warn("[OneSignal] registerPush on login failed:", e));
     onOpenChange(false);
     toast.success(`Bem-vindo de volta, ${data.name}! 🔥`);
     navigate({ to: "/" });
@@ -225,8 +216,7 @@ function LoginDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: 
           </span>
         </div>
         <form onSubmit={submit} className="mt-4 space-y-3">
-          <Field label="Nome ou e-mail" placeholder="Seu nome ou e-mail" value={name} onChange={(e) => setName(e.target.value)} />
-          <Field label="Senha" type="password" placeholder="Sua senha" />
+          <Field label="Nome" placeholder="Seu nome no HotMatch" value={name} onChange={(e) => setName(e.target.value)} />
           <Button
             type="submit"
             disabled={loading}
@@ -265,19 +255,22 @@ function SignupFlow({ open, onOpenChange, gender }: {
 
   // Step 1
   const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
   const [dob, setDob] = useState("");
-  const [phone, setPhone] = useState("");
+  const [bio, setBio] = useState("");
 
-  // Step 2
-  const [hasPhoto, setHasPhoto] = useState(false);
-  const [extraPhotos, setExtraPhotos] = useState<boolean[]>([false, false, false]);
+  // Step 2 — real avatar file
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
 
   // Step 3 — biometrics
   const [camPhase, setCamPhase] = useState<"idle" | "active" | "scanning" | "done">("idle");
   const [scanMsg, setScanMsg] = useState("");
   const [scanPct, setScanPct] = useState(0);
+  const [capturedBlob, setCapturedBlob] = useState<Blob | null>(null);
+  const [capturedPreview, setCapturedPreview] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
   // Reset on close
@@ -285,9 +278,11 @@ function SignupFlow({ open, onOpenChange, gender }: {
     if (!open) {
       streamRef.current?.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
-      setStep(1); setHasPhoto(false); setExtraPhotos([false, false, false]);
+      setStep(1);
+      setName(""); setDob(""); setBio("");
+      setAvatarFile(null); setAvatarPreview(null);
       setCamPhase("idle"); setScanMsg(""); setScanPct(0);
-      setName(""); setEmail(""); setDob(""); setPhone("");
+      setCapturedBlob(null); setCapturedPreview(null);
     }
   }, [open]);
 
@@ -303,81 +298,99 @@ function SignupFlow({ open, onOpenChange, gender }: {
       }
       setCamPhase("active");
     } catch {
-      // Permission denied or no camera — allow skip so the user isn't blocked
-      toast("Câmera não disponível — você pode continuar sem a verificação.", { description: "Recomendamos verificar para maior segurança." });
-      setCamPhase("done");
+      toast.error("Câmera indisponível. Selecione uma selfie da galeria.");
     }
   }
 
+  function captureSelfie() {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return;
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
+    canvas.getContext("2d")?.drawImage(video, 0, 0, canvas.width, canvas.height);
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) return;
+        setCapturedBlob(blob);
+        setCapturedPreview(URL.createObjectURL(blob));
+        streamRef.current?.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+        runScan();
+      },
+      "image/jpeg",
+      0.85,
+    );
+  }
+
   async function runScan() {
-    if (camPhase !== "active") return;
     setCamPhase("scanning");
     const msgs = [
       "Iniciando análise biométrica...",
-      "Analisando características faciais... Mantenha-se firme",
+      "Analisando características faciais...",
       "Validando identidade...",
       "Verificação facial concluída ✓",
     ];
     for (let i = 0; i < msgs.length; i++) {
-      await delay(750);
+      await delay(700);
       setScanMsg(msgs[i]);
       setScanPct(Math.round(((i + 1) / msgs.length) * 100));
     }
-    await delay(400);
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-    streamRef.current = null;
+    await delay(300);
     setCamPhase("done");
     toast.success(isCreator ? "Selo de Criadora VIP validado!" : "Perfil verificado como real!");
   }
 
   async function finish() {
-    if (camPhase !== "done") {
-      // Allow the user to proceed even without camera by marking it as skipped
-      toast("Verificação facial pendente.", { description: "Toque em 'Ativar câmera' ou continue sem ela." });
-      return;
-    }
-    // CPF is optional for creators (nullable column doesn't exist — we simply don't send it)
     setSaving(true);
     try {
-      const payload: {
-        gender: string;
-        name: string;
-        age: number;
-        bio: string;
-        location: string;
-        avatar_url: string | null;
-        coin_balance: number;
-        earnings_brl: number;
-        is_verified: boolean;
-        is_demo: boolean;
-      } = {
-        gender,
-        name: name.trim() || (isCreator ? "Criadora" : "Usuário"),
-        age: dob ? calcAge(dob) : (isCreator ? 22 : 25),
-        bio: isCreator
-          ? "Criadora de conteúdo exclusivo no HotMatch 🔥"
-          : "Novo no HotMatch. Aqui para se conectar!",
-        location: "Brasil",
-        avatar_url: null,
-        coin_balance: 0,
-        earnings_brl: 0,
-        is_verified: true,
-        is_demo: false,
-      };
+      // Upload avatar
+      let avatarUrl: string | null = null;
+      if (avatarFile) {
+        const ext = avatarFile.name.split(".").pop() ?? "jpg";
+        const path = `avatars/${Date.now()}.${ext}`;
+        const { data: sd } = await supabase.storage
+          .from("photos")
+          .upload(path, avatarFile, { upsert: true, contentType: avatarFile.type });
+        if (sd) {
+          const { data: { publicUrl } } = supabase.storage.from("photos").getPublicUrl(sd.path);
+          avatarUrl = publicUrl;
+        }
+      }
 
-      console.log("[HotMatch] Inserting profile:", payload);
+      // Upload verification selfie
+      let verificationPhotoUrl: string | null = null;
+      if (capturedBlob) {
+        const path = `verifications/${Date.now()}_selfie.jpg`;
+        const { data: vd } = await supabase.storage
+          .from("photos")
+          .upload(path, capturedBlob, { upsert: true, contentType: "image/jpeg" });
+        if (vd) {
+          const { data: { publicUrl } } = supabase.storage.from("photos").getPublicUrl(vd.path);
+          verificationPhotoUrl = publicUrl;
+        }
+      }
 
       const { data, error } = await supabase
         .from("profiles")
-        .insert(payload)
+        .insert({
+          gender,
+          name: name.trim(),
+          age: dob ? calcAge(dob) : 18,
+          bio: bio.trim(),
+          location: "Brasil",
+          avatar_url: avatarUrl,
+          coin_balance: 0,
+          earnings_brl: 0,
+          is_verified: false,
+          is_demo: false,
+          verification_status: verificationPhotoUrl ? "pending" : "unverified",
+          verification_photo_url: verificationPhotoUrl,
+        })
         .select()
         .single();
 
-      if (error) {
-        console.error("[HotMatch] Supabase error:", error);
-        throw new Error(error.message || "Erro ao salvar perfil no banco de dados.");
-      }
-      if (!data) throw new Error("Perfil não retornado após inserção.");
+      if (error || !data) throw new Error(error?.message ?? "Erro ao criar perfil.");
 
       actions.setProfile({
         profileId: data.id,
@@ -389,19 +402,15 @@ function SignupFlow({ open, onOpenChange, gender }: {
         vip: false,
       });
 
-      // Request push permission and persist player ID (non-blocking)
-      registerPush(data.id).catch((e) =>
-        console.warn("[OneSignal] registerPush failed:", e),
-      );
+      registerPush(data.id).catch((e) => console.warn("[OneSignal] registerPush failed:", e));
 
-      // Fire-and-forget welcome notification — don't let failure block redirect
       supabase.from("notifications").insert({
         user_id: data.id,
         type: "match",
         title: "Bem-vindo ao HotMatch! 🔥",
         content: isCreator
-          ? "Seu perfil de criadora foi verificado. Comece a postar!"
-          : "Conta criada com 320 moedas de boas-vindas. Explore o feed!",
+          ? "Seu perfil está sendo verificado. Em breve você poderá sacar seus ganhos!"
+          : "Explore o feed e converse com pessoas incríveis.",
         is_read: false,
       }).then(({ error: nErr }) => {
         if (nErr) console.warn("[HotMatch] Notification insert failed:", nErr);
@@ -409,12 +418,9 @@ function SignupFlow({ open, onOpenChange, gender }: {
 
       onOpenChange(false);
       toast.success(`Bem-vindo ao HotMatch, ${data.name}! 🔥`);
-      // Always go to main feed on success
       navigate({ to: "/" });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Erro desconhecido ao criar conta.";
-      console.error("[HotMatch] finish() error:", err);
-      toast.error(msg);
+      toast.error(err instanceof Error ? err.message : "Erro desconhecido ao criar conta.");
     } finally {
       setSaving(false);
     }
@@ -423,11 +429,15 @@ function SignupFlow({ open, onOpenChange, gender }: {
   const next = async () => {
     if (step === 1) {
       if (!name.trim()) { toast.error("Informe seu nome."); return; }
+      if (!dob) { toast.error("Informe sua data de nascimento."); return; }
+      if (calcAge(dob) < 18) { toast.error("Você deve ter pelo menos 18 anos."); return; }
+      if (!bio.trim()) { toast.error("Escreva uma breve bio."); return; }
       setStep(2);
     } else if (step === 2) {
-      if (!hasPhoto) { toast.error("Foto de perfil obrigatória."); return; }
+      if (!avatarFile) { toast.error("Foto de perfil obrigatória. Selecione uma imagem."); return; }
       setStep(3);
     } else {
+      if (camPhase !== "done") { toast.error("Complete a verificação facial para continuar."); return; }
       await finish();
     }
   };
@@ -460,52 +470,62 @@ function SignupFlow({ open, onOpenChange, gender }: {
           </div>
         </div>
 
-        {/* Step 1 */}
+        {/* Step 1 — basic info */}
         {step === 1 && (
           <div className="mt-4 space-y-3">
             <h2 className="text-lg font-extrabold">Dados básicos</h2>
             <Field label="Seu Nome ou Apelido *" placeholder="Ex: Lucas ou Mari" value={name} onChange={(e) => setName(e.target.value)} />
-            <Field label="E-mail" type="email" placeholder="voce@email.com" value={email} onChange={(e) => setEmail(e.target.value)} />
-            <Field label="Senha" type="password" placeholder="Mínimo 8 caracteres" />
-            <Field label="Data de nascimento (+18)" type="date" value={dob} onChange={(e) => setDob(e.target.value)} />
-            <Field label="Telefone (WhatsApp)" type="tel" placeholder="(11) 90000-0000" value={phone} onChange={(e) => setPhone(e.target.value)} />
+            <Field label="Data de nascimento (+18) *" type="date" value={dob} onChange={(e) => setDob(e.target.value)} />
+            <div className="space-y-1.5">
+              <Label className="text-[11px] font-semibold text-muted-foreground">Bio *</Label>
+              <textarea
+                value={bio}
+                onChange={(e) => setBio(e.target.value)}
+                rows={3}
+                placeholder={isCreator ? "Ex: Criadora de conteúdo exclusivo 🔥" : "Ex: Aqui para curtir e conhecer pessoas!"}
+                className="w-full resize-none rounded-2xl border border-border bg-surface-2 px-4 py-3 text-sm text-foreground outline-none focus:border-primary placeholder:text-muted-foreground/60"
+              />
+            </div>
           </div>
         )}
 
-        {/* Step 2 */}
+        {/* Step 2 — avatar + gallery */}
         {step === 2 && (
           <div className="mt-4 space-y-5">
-            <h2 className="text-lg font-extrabold">Fotos do Perfil</h2>
+            <h2 className="text-lg font-extrabold">Foto de Perfil</h2>
             <div className="flex flex-col items-center gap-3">
-              <p className="text-xs font-semibold text-muted-foreground">Foto de perfil <span className="text-primary">*obrigatória</span></p>
+              <p className="text-xs font-semibold text-muted-foreground">
+                Foto de perfil <span className="text-primary">*obrigatória</span>
+              </p>
               <button
-                onClick={() => { setHasPhoto((v) => !v); if (!hasPhoto) toast("Foto adicionada ✨"); }}
-                className={cn("tap-scale relative grid size-32 place-items-center rounded-full border-2 border-dashed transition-all", hasPhoto ? "border-gold bg-gold/10" : "border-border bg-surface-2")}
+                onClick={() => avatarInputRef.current?.click()}
+                className={cn(
+                  "tap-scale relative grid size-32 place-items-center rounded-full border-2 border-dashed transition-all",
+                  avatarPreview ? "border-gold bg-gold/10" : "border-border bg-surface-2",
+                )}
               >
-                {hasPhoto ? (
-                  <span className="grid size-28 place-items-center rounded-full bg-gold/20">
-                    <Check className="size-8 text-gold" />
-                  </span>
+                {avatarPreview ? (
+                  <img src={avatarPreview} alt="Avatar" className="size-full rounded-full object-cover" />
                 ) : (
                   <span className="grid size-28 place-items-center rounded-full bg-surface-2">
                     <Camera className="size-9 text-muted-foreground" />
                   </span>
                 )}
+                <span className="absolute -bottom-1 -right-1 grid size-8 place-items-center rounded-full bg-gradient-hot shadow-hot">
+                  <Plus className="size-4 text-white" />
+                </span>
               </button>
-            </div>
-            <div>
-              <p className="mb-2 text-xs font-semibold text-muted-foreground">Galeria pública <span className="text-muted-foreground/60">(opcional)</span></p>
-              <div className="grid grid-cols-3 gap-2">
-                {extraPhotos.map((filled, i) => (
-                  <button
-                    key={i}
-                    onClick={() => { const next = [...extraPhotos]; next[i] = !next[i]; setExtraPhotos(next); if (!filled) toast("Foto adicionada 📸"); }}
-                    className={cn("tap-scale grid aspect-square place-items-center rounded-2xl border border-dashed transition-all", filled ? "border-gold/50 bg-gold/10 text-gold" : "border-border bg-surface-2 text-muted-foreground")}
-                  >
-                    {filled ? <Check className="size-5" /> : <Plus className="size-5" />}
-                  </button>
-                ))}
-              </div>
+              <p className="text-[11px] text-muted-foreground">Toque para selecionar da galeria ou tirar foto</p>
+              <input
+                ref={avatarInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) { setAvatarFile(f); setAvatarPreview(URL.createObjectURL(f)); }
+                }}
+              />
             </div>
           </div>
         )}
@@ -516,21 +536,24 @@ function SignupFlow({ open, onOpenChange, gender }: {
             <h2 className="text-lg font-extrabold">{isCreator ? "Validação & Selo VIP" : "Validação Anti-Fake"}</h2>
             <div className="rounded-2xl border border-gold/25 bg-gold/10 p-3">
               <p className="flex items-center gap-2 text-xs font-bold text-gold">
-                <ShieldCheck className="size-4" /> Garantia de Segurança HotMatch
+                <ShieldCheck className="size-4" /> Verificação obrigatória
               </p>
               <p className="mt-1 text-[11px] text-muted-foreground">
-                {isCreator ? "Apenas pessoas reais! A verificação protege sua conta e libera saques Pix." : "Apenas pessoas reais! A validação facial elimina perfis falsos."}
+                {isCreator
+                  ? "Tire uma selfie para validar sua identidade e liberar saques Pix."
+                  : "Tire uma selfie para confirmar que você é uma pessoa real."}
               </p>
             </div>
 
             <div className="flex flex-col items-center gap-3">
-              {/* Oval camera frame */}
               <div className="relative flex items-center justify-center">
                 <div
                   className={cn(
                     "relative overflow-hidden rounded-full border-4 transition-all duration-500",
-                    camPhase === "done" ? "border-gold shadow-[0_0_24px_oklch(0.86_0.16_92/0.5)]"
-                      : camPhase === "scanning" ? "border-primary animate-pulse"
+                    camPhase === "done"
+                      ? "border-gold shadow-[0_0_24px_oklch(0.86_0.16_92/0.5)]"
+                      : camPhase === "scanning"
+                      ? "border-primary animate-pulse"
                       : "border-border",
                   )}
                   style={{ width: 200, height: 240 }}
@@ -545,14 +568,20 @@ function SignupFlow({ open, onOpenChange, gender }: {
                   )}
                   {camPhase === "scanning" && (
                     <div className="absolute inset-0 bg-black/20">
-                      <div className="absolute h-0.5 w-3/4 translate-x-[16.7%] rounded-full bg-gradient-hot opacity-80" style={{ animation: "scanLine 1.5s ease-in-out infinite alternate", top: "30%" }} />
+                      <div
+                        className="absolute h-0.5 w-3/4 translate-x-[16.7%] rounded-full bg-gradient-hot opacity-80"
+                        style={{ animation: "scanLine 1.5s ease-in-out infinite alternate", top: "30%" }}
+                      />
                     </div>
                   )}
+                  {camPhase === "done" && capturedPreview && (
+                    <img src={capturedPreview} alt="Selfie" className="size-full object-cover [transform:scaleX(-1)]" />
+                  )}
                   {camPhase === "done" && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-gold/20">
-                      <div className="grid size-16 place-items-center rounded-full bg-gold/30">
-                        <Check className="size-9 text-gold" />
-                      </div>
+                    <div className="absolute inset-0 flex items-end justify-center bg-gradient-to-t from-black/60 to-transparent pb-4">
+                      <span className="flex items-center gap-1 text-xs font-bold text-white">
+                        <Check className="size-4 text-gold" /> Verificado
+                      </span>
                     </div>
                   )}
                 </div>
@@ -566,6 +595,9 @@ function SignupFlow({ open, onOpenChange, gender }: {
                 )}
               </div>
 
+              {/* hidden canvas for frame capture */}
+              <canvas ref={canvasRef} className="hidden" />
+
               {(camPhase === "scanning" || camPhase === "done") && (
                 <div className="w-full max-w-[200px]">
                   <div className="h-1.5 overflow-hidden rounded-full bg-surface-2">
@@ -575,28 +607,20 @@ function SignupFlow({ open, onOpenChange, gender }: {
               )}
 
               <p className={cn("text-center text-xs", camPhase === "done" ? "font-semibold text-gold" : "text-muted-foreground")}>
-                {camPhase === "idle" && "Posicione seu rosto no círculo para verificação"}
-                {camPhase === "active" && "Rosto detectado. Pressione Iniciar Scan."}
+                {camPhase === "idle" && "Posicione seu rosto no círculo e ative a câmera"}
+                {camPhase === "active" && "Rosto detectado. Toque em Tirar Selfie quando estiver pronto."}
                 {camPhase === "scanning" && scanMsg}
                 {camPhase === "done" && "Biometria facial validada com sucesso ✓"}
               </p>
 
               {camPhase === "idle" && (
-                <div className="flex flex-col items-center gap-2">
-                  <Button onClick={startCamera} variant="secondary" className="rounded-full">
-                    <Camera className="size-4" /> Ativar câmera
-                  </Button>
-                  <button
-                    onClick={() => setCamPhase("done")}
-                    className="text-[11px] text-muted-foreground underline underline-offset-4"
-                  >
-                    Pular verificação
-                  </button>
-                </div>
+                <Button onClick={startCamera} variant="secondary" className="rounded-full">
+                  <Camera className="size-4" /> Ativar câmera
+                </Button>
               )}
               {camPhase === "active" && (
-                <Button onClick={runScan} className="rounded-full bg-gradient-hot text-primary-foreground shadow-hot">
-                  <ShieldCheck className="size-4" /> Iniciar Scan Facial
+                <Button onClick={captureSelfie} className="rounded-full bg-gradient-hot text-primary-foreground shadow-hot">
+                  <Camera className="size-4" /> Tirar Selfie
                 </Button>
               )}
             </div>

@@ -7,7 +7,7 @@ import { supabase } from "@/lib/supabase";
 type Props = { open: boolean; onClose: () => void };
 
 export function EditProfileModal({ open, onClose }: Props) {
-  const { gender, profileId, name: storeName, avatarUrl: storeAvatar } = useAppState();
+  const { gender, profileId, name: storeName, avatarUrl: storeAvatar, coins, earnings } = useAppState();
   const isCreator = gender === "female";
 
   const [name, setName] = useState(storeName || "");
@@ -35,11 +35,7 @@ export function EditProfileModal({ open, onClose }: Props) {
     setAvatarPreview(URL.createObjectURL(file));
   }
 
-  function onGalleryPick(
-    e: React.ChangeEvent<HTMLInputElement>,
-    index: number,
-    kind: "public" | "vip",
-  ) {
+  function onGalleryPick(e: React.ChangeEvent<HTMLInputElement>, index: number, kind: "public" | "vip") {
     const file = e.target.files?.[0];
     if (!file) return;
     const url = URL.createObjectURL(file);
@@ -53,14 +49,10 @@ export function EditProfileModal({ open, onClose }: Props) {
   }
 
   async function uploadFile(file: File, path: string): Promise<string | null> {
-    const { data, error } = await supabase.storage.from("photos").upload(path, file, {
-      upsert: true,
-      contentType: file.type,
-    });
-    if (error) {
-      console.error("[Upload] Failed:", error.message);
-      return null;
-    }
+    const { data, error } = await supabase.storage
+      .from("photos")
+      .upload(path, file, { upsert: true, contentType: file.type });
+    if (error) { console.error("[Upload] Failed:", error.message); return null; }
     const { data: { publicUrl } } = supabase.storage.from("photos").getPublicUrl(data.path);
     return publicUrl;
   }
@@ -85,14 +77,10 @@ export function EditProfileModal({ open, onClose }: Props) {
       if (finalAvatarUrl) updatePayload.avatar_url = finalAvatarUrl;
 
       if (Object.keys(updatePayload).length > 0) {
-        const { error } = await supabase
-          .from("profiles")
-          .update(updatePayload)
-          .eq("id", profileId);
+        const { error } = await supabase.from("profiles").update(updatePayload).eq("id", profileId);
         if (error) throw new Error(error.message);
       }
 
-      // Upload public gallery photos
       const publicUploads = publicFiles.map(async (file, i) => {
         if (!file) return;
         const url = await uploadFile(file, `${profileId}/public_${i}_${Date.now()}`);
@@ -100,14 +88,13 @@ export function EditProfileModal({ open, onClose }: Props) {
           await supabase.from("user_photos").insert({
             user_id: profileId,
             photo_url: url,
-            photo_kind: "public",
+            is_vip: false,
             coin_price: 0,
-            is_active: true,
+            sort_order: i,
           });
         }
       });
 
-      // Upload VIP gallery photos (creators only)
       const vipUploads = isCreator
         ? vipFiles.map(async (file, i) => {
             if (!file) return;
@@ -116,9 +103,9 @@ export function EditProfileModal({ open, onClose }: Props) {
               await supabase.from("user_photos").insert({
                 user_id: profileId,
                 photo_url: url,
-                photo_kind: "vip",
+                is_vip: true,
                 coin_price: 60,
-                is_active: true,
+                sort_order: i,
               });
             }
           })
@@ -126,24 +113,20 @@ export function EditProfileModal({ open, onClose }: Props) {
 
       await Promise.all([...publicUploads, ...vipUploads]);
 
-      // Sync store with updated values
-      if (finalAvatarUrl && finalAvatarUrl !== storeAvatar) {
-        actions.setProfile({
-          profileId,
-          gender,
-          name: (updatePayload.name as string) || storeName,
-          avatarUrl: finalAvatarUrl,
-          coins: 0,
-          earnings: 0,
-        });
-      }
+      // Preserve existing coins/earnings — only update identity fields
+      actions.setProfile({
+        profileId,
+        gender,
+        name: (updatePayload.name as string | undefined) ?? storeName,
+        avatarUrl: finalAvatarUrl ?? storeAvatar,
+        coins,
+        earnings,
+      });
 
       toast.success("Perfil atualizado! ✨");
       onClose();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Erro ao salvar.";
-      console.error("[EditProfile] save error:", err);
-      toast.error(msg);
+      toast.error(err instanceof Error ? err.message : "Erro ao salvar.");
     } finally {
       setSaving(false);
     }
@@ -167,10 +150,7 @@ export function EditProfileModal({ open, onClose }: Props) {
 
         <div className="flex items-center justify-between px-5 py-4">
           <h2 className="text-lg font-extrabold">Editar Perfil</h2>
-          <button
-            onClick={onClose}
-            className="grid size-8 place-items-center rounded-full bg-surface-2"
-          >
+          <button onClick={onClose} className="grid size-8 place-items-center rounded-full bg-surface-2">
             <X className="size-4 text-muted-foreground" />
           </button>
         </div>
@@ -181,11 +161,7 @@ export function EditProfileModal({ open, onClose }: Props) {
             <div className="relative">
               <div className="ring-match grid size-24 place-items-center rounded-full p-[3px] shadow-gold">
                 {avatarPreview ? (
-                  <img
-                    src={avatarPreview}
-                    alt="Avatar"
-                    className="size-full rounded-full object-cover"
-                  />
+                  <img src={avatarPreview} alt="Avatar" className="size-full rounded-full object-cover" />
                 ) : (
                   <div className="size-full rounded-full bg-surface-2" />
                 )}
@@ -196,18 +172,10 @@ export function EditProfileModal({ open, onClose }: Props) {
               >
                 <Camera className="size-3.5 text-white" />
               </button>
-              <input
-                ref={avatarInputRef}
-                type="file"
-                accept="image/*"
-                capture="environment"
-                className="hidden"
-                onChange={onAvatarPick}
-              />
+              {/* No capture="environment" — lets the user choose gallery OR camera */}
+              <input ref={avatarInputRef} type="file" accept="image/*" className="hidden" onChange={onAvatarPick} />
             </div>
-            <p className="text-xs text-muted-foreground">
-              Toque na câmera para tirar ou selecionar uma foto
-            </p>
+            <p className="text-xs text-muted-foreground">Selecione da galeria ou tire uma foto</p>
           </div>
 
           {/* Text fields */}
@@ -283,18 +251,8 @@ export function EditProfileModal({ open, onClose }: Props) {
   );
 }
 
-function Field({
-  label,
-  value,
-  onChange,
-  type = "text",
-  placeholder,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  type?: string;
-  placeholder?: string;
+function Field({ label, value, onChange, type = "text", placeholder }: {
+  label: string; value: string; onChange: (v: string) => void; type?: string; placeholder?: string;
 }) {
   return (
     <div className="space-y-1.5">
@@ -310,11 +268,7 @@ function Field({
   );
 }
 
-function GallerySlot({
-  src,
-  onPick,
-  onRemove,
-}: {
+function GallerySlot({ src, onPick, onRemove }: {
   src: string | null;
   onPick: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onRemove: () => void;
@@ -326,10 +280,7 @@ function GallerySlot({
       {src ? (
         <>
           <img src={src} alt="" className="size-full object-cover" />
-          <button
-            onClick={onRemove}
-            className="absolute right-1 top-1 grid size-5 place-items-center rounded-full bg-black/60"
-          >
+          <button onClick={onRemove} className="absolute right-1 top-1 grid size-5 place-items-center rounded-full bg-black/60">
             <X className="size-3 text-white" />
           </button>
         </>
@@ -341,14 +292,8 @@ function GallerySlot({
           <Plus className="size-6" />
         </button>
       )}
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        className="hidden"
-        onChange={onPick}
-      />
+      {/* No capture="environment" — standard gallery/camera picker */}
+      <input ref={inputRef} type="file" accept="image/*,video/*" className="hidden" onChange={onPick} />
     </div>
   );
 }
