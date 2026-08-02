@@ -1,211 +1,190 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
-import {
-  Check,
-  Coins,
-  Crown,
-  Heart,
-  Lock,
-  MessageCircle,
-  Play,
-  Plus,
-  Send,
-  Upload,
-  UserPlus,
-} from "lucide-react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+import { Check, Coins, Crown, Heart, Lock, MessageCircle, Play, Plus, Send, Upload, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { TopBar } from "@/components/hotmatch/TopBar";
-import { posts, profiles, type Post } from "@/lib/hotmatch/data";
 import { actions, useAppState } from "@/lib/hotmatch/store";
+import { supabase, type DbFeedPost, type DbProfile } from "@/lib/supabase";
 
 export const Route = createFileRoute("/feed")({
   head: () => ({
     meta: [
       { title: "Feed Exclusivo — HotMatch" },
-      {
-        name: "description",
-        content:
-          "Fotos e vídeos das criadoras HotMatch. Conteúdo público e mídias VIP desbloqueáveis com moedas ou Pix.",
-      },
-      { property: "og:title", content: "Feed Exclusivo — HotMatch" },
-      {
-        property: "og:description",
-        content: "Conteúdo exclusivo das criadoras, liberado com moedas HotMatch.",
-      },
+      { name: "description", content: "Fotos e vídeos das criadoras HotMatch. Conteúdo público e mídias VIP." },
     ],
   }),
   component: Feed,
 });
 
 type FeedTab = "geral" | "following" | "meus";
+type RichPost = DbFeedPost & { author: DbProfile };
+
+async function fetchPosts(): Promise<RichPost[]> {
+  const { data, error } = await supabase
+    .from("feed_posts")
+    .select("*, profiles!inner(*)")
+    .order("created_at", { ascending: false })
+    .limit(40);
+  if (error || !data) return [];
+  return data.map((row) => ({ ...(row as DbFeedPost), author: (row as Record<string, unknown>).profiles as DbProfile }));
+}
 
 function Feed() {
-  const { gender, followed } = useAppState();
+  const { gender, followed, profileId } = useAppState();
   const isCreator = gender === "female";
 
   const tabs: { id: FeedTab; label: string }[] = isCreator
-    ? [
-        { id: "geral", label: "Feed Geral" },
-        { id: "meus", label: "Meus Posts" },
-      ]
-    : [
-        { id: "geral", label: "Feed Geral" },
-        { id: "following", label: "Criadoras que Sigo" },
-      ];
+    ? [{ id: "geral", label: "Feed Geral" }, { id: "meus", label: "Meus Posts" }]
+    : [{ id: "geral", label: "Feed Geral" }, { id: "following", label: "Seguindo" }];
 
-  const [activeTab, setActiveTab] = useState<FeedTab>(tabs[0].id);
+  const [activeTab, setActiveTab] = useState<FeedTab>("geral");
   const [postOpen, setPostOpen] = useState(false);
   const [likedIds, setLikedIds] = useState<string[]>([]);
+  const [allPosts, setAllPosts] = useState<RichPost[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const displayPosts = (() => {
-    const allPosts = [...posts, ...posts.map((p) => ({ ...p, id: p.id + "-2" }))];
-    if (activeTab === "following") {
-      const followedPosts = allPosts.filter((p) => followed.includes(p.author.id));
-      return followedPosts;
-    }
-    if (activeTab === "meus") {
-      return allPosts.filter((p) => p.author.id === profiles[0].id);
-    }
-    return allPosts;
-  })();
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    fetchPosts().then((p) => { if (!cancelled) { setAllPosts(p); setLoading(false); } });
+
+    const ch = supabase.channel("feed_live")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "feed_posts" }, () => {
+        if (!cancelled) fetchPosts().then((p) => { if (!cancelled) setAllPosts(p); });
+      })
+      .subscribe();
+
+    return () => { cancelled = true; supabase.removeChannel(ch); };
+  }, []);
+
+  const displayPosts =
+    activeTab === "following" ? allPosts.filter((p) => followed.includes(p.author_id))
+    : activeTab === "meus" ? allPosts.filter((p) => p.author_id === profileId)
+    : allPosts;
 
   return (
     <div className="min-h-screen pb-32">
       <TopBar title="Feed Exclusivo" />
 
-      {/* Tab bar */}
       <div className="sticky top-[3.5rem] z-30 mx-4 mb-4 flex rounded-full border border-border bg-surface p-1">
         {tabs.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setActiveTab(t.id)}
-            className={`flex-1 rounded-full py-2 text-xs font-bold transition-all ${
-              activeTab === t.id
-                ? "bg-gradient-hot text-primary-foreground shadow-hot"
-                : "text-muted-foreground"
-            }`}
-          >
+          <button key={t.id} onClick={() => setActiveTab(t.id)}
+            className={`flex-1 rounded-full py-2 text-xs font-bold transition-all ${activeTab === t.id ? "bg-gradient-hot text-primary-foreground shadow-hot" : "text-muted-foreground"}`}>
             {t.label}
           </button>
         ))}
       </div>
 
       <div className="space-y-5 px-4">
-        {displayPosts.length === 0 ? (
-          <div className="flex flex-col items-center gap-3 py-16 text-center">
-            <div className="grid size-16 place-items-center rounded-full bg-surface-2">
-              <UserPlus className="size-7 text-muted-foreground" />
-            </div>
-            <p className="text-sm font-semibold">Você ainda não segue nenhuma criadora</p>
-            <p className="max-w-xs text-xs text-muted-foreground">
-              Siga suas criadoras favoritas no feed geral para ver os posts delas aqui.
-            </p>
-          </div>
+        {loading ? (
+          Array.from({ length: 3 }).map((_, i) => <PostSkeleton key={i} />)
+        ) : displayPosts.length === 0 ? (
+          <EmptyFeed tab={activeTab} />
         ) : (
           displayPosts.map((p) => (
-            <PostCard
-              key={p.id}
-              post={p}
+            <PostCard key={p.id} post={p}
               liked={likedIds.includes(p.id)}
-              onLike={() =>
-                setLikedIds((ids) =>
-                  ids.includes(p.id) ? ids.filter((x) => x !== p.id) : [...ids, p.id],
-                )
-              }
+              onLike={() => setLikedIds((ids) => ids.includes(p.id) ? ids.filter((x) => x !== p.id) : [...ids, p.id])}
             />
           ))
         )}
       </div>
 
       {isCreator && (
-        <button
-          onClick={() => setPostOpen(true)}
-          className="tap-scale fixed bottom-28 right-[max(1rem,calc(50%-14rem))] z-40 flex items-center gap-2 rounded-full bg-gradient-gold px-4 py-3 shadow-gold"
-        >
+        <button onClick={() => setPostOpen(true)}
+          className="tap-scale fixed bottom-28 right-[max(1rem,calc(50%-14rem))] z-40 flex items-center gap-2 rounded-full bg-gradient-gold px-4 py-3 shadow-gold">
           <Plus className="size-5 text-gold-foreground" />
           <span className="text-sm font-bold text-gold-foreground">Postar Mídia VIP</span>
         </button>
       )}
 
-      {postOpen && <PostModal onClose={() => setPostOpen(false)} />}
+      {postOpen && (
+        <PostModal
+          onClose={() => setPostOpen(false)}
+          profileId={profileId}
+          onPosted={(p) => setAllPosts((prev) => [p, ...prev])}
+        />
+      )}
     </div>
   );
 }
 
-function PostCard({
-  post,
-  liked,
-  onLike,
-}: {
-  post: Post;
-  liked: boolean;
-  onLike: () => void;
-}) {
+function EmptyFeed({ tab }: { tab: FeedTab }) {
+  return (
+    <div className="flex flex-col items-center gap-3 py-16 text-center">
+      <div className="grid size-16 place-items-center rounded-full bg-surface-2">
+        <UserPlus className="size-7 text-muted-foreground" />
+      </div>
+      {tab === "following" ? (
+        <><p className="text-sm font-semibold">Você ainda não segue nenhuma criadora</p>
+        <p className="max-w-xs text-xs text-muted-foreground">Siga criadoras no feed geral para ver os posts delas aqui.</p></>
+      ) : tab === "meus" ? (
+        <><p className="text-sm font-semibold">Você ainda não publicou nada</p>
+        <p className="max-w-xs text-xs text-muted-foreground">Toque em "Postar Mídia VIP" para publicar seu primeiro conteúdo.</p></>
+      ) : (
+        <><p className="text-sm font-semibold">Nenhum post disponível ainda</p>
+        <p className="max-w-xs text-xs text-muted-foreground">Seja a primeira criadora a postar conteúdo exclusivo!</p></>
+      )}
+    </div>
+  );
+}
+
+function PostSkeleton() {
+  return (
+    <div className="overflow-hidden rounded-3xl border border-border bg-surface">
+      <div className="flex items-center gap-3 p-3">
+        <div className="size-11 rounded-full bg-surface-2 animate-pulse" />
+        <div className="flex-1 space-y-1.5">
+          <div className="h-3 w-24 rounded-full bg-surface-2 animate-pulse" />
+          <div className="h-2 w-16 rounded-full bg-surface-2 animate-pulse" />
+        </div>
+      </div>
+      <div className="aspect-[4/5] bg-surface-2 animate-pulse" />
+    </div>
+  );
+}
+
+function PostCard({ post, liked, onLike }: { post: RichPost; liked: boolean; onLike: () => void }) {
   const { unlocked, followed } = useAppState();
-  const isLocked = post.locked && !unlocked.includes(post.id);
-  const isFollowing = followed.includes(post.author.id);
+  const isLocked = post.is_locked && !unlocked.includes(post.id);
+  const isFollowing = followed.includes(post.author_id);
+
+  const relTime = (() => {
+    const s = Math.floor((Date.now() - new Date(post.created_at).getTime()) / 1000);
+    if (s < 60) return "agora";
+    if (s < 3600) return `há ${Math.floor(s / 60)} min`;
+    if (s < 86400) return `há ${Math.floor(s / 3600)} h`;
+    return `há ${Math.floor(s / 86400)} d`;
+  })();
 
   return (
     <article className="overflow-hidden rounded-3xl border border-border bg-surface shadow-card-premium">
       <header className="flex items-center gap-3 p-3">
-        <span className="ring-match grid size-11 shrink-0 place-items-center rounded-full p-[2px]">
-          <img
-            src={post.author.photo}
-            alt={post.author.name}
-            width={768}
-            height={1024}
-            loading="lazy"
-            className="size-full rounded-full object-cover"
-          />
-        </span>
+        <Link to="/mensagens/$chatId" params={{ chatId: post.author_id }}>
+          <span className="ring-match grid size-11 shrink-0 place-items-center rounded-full p-[2px]">
+            {post.author.avatar_url ? (
+              <img src={post.author.avatar_url} alt={post.author.name} width={200} height={200} loading="lazy" className="size-full rounded-full object-cover" />
+            ) : <div className="size-full rounded-full bg-surface-2" />}
+          </span>
+        </Link>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1">
             <p className="truncate text-sm font-bold">{post.author.name}</p>
-            {post.author.creator && (
-              <Crown className="size-3.5 shrink-0 text-gold" fill="currentColor" />
-            )}
+            {post.author.is_verified && <Crown className="size-3.5 shrink-0 text-gold" fill="currentColor" />}
           </div>
-          <p className="text-xs text-muted-foreground">
-            {post.time} · {post.type}
-          </p>
+          <p className="text-xs text-muted-foreground">{relTime} · {post.media_type}</p>
         </div>
         <button
-          onClick={() => {
-            if (isFollowing) {
-              actions.unfollow(post.author.id);
-              toast(`Você deixou de seguir ${post.author.name}`);
-            } else {
-              actions.follow(post.author.id);
-              toast(`Seguindo ${post.author.name} 💗`);
-            }
-          }}
-          className={`tap-scale flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition-all ${
-            isFollowing
-              ? "border border-border bg-surface-2 text-foreground"
-              : "bg-gradient-hot text-primary-foreground"
-          }`}
-        >
-          {isFollowing ? (
-            <>
-              <Check className="size-3" />
-              Seguindo
-            </>
-          ) : (
-            "Seguir"
-          )}
+          onClick={() => { isFollowing ? actions.unfollow(post.author_id) : actions.follow(post.author_id); toast(isFollowing ? `Deixou de seguir ${post.author.name}` : `Seguindo ${post.author.name} 💗`); }}
+          className={`tap-scale flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition-all ${isFollowing ? "border border-border bg-surface-2 text-foreground" : "bg-gradient-hot text-primary-foreground"}`}>
+          {isFollowing ? <><Check className="size-3" />Seguindo</> : "Seguir"}
         </button>
       </header>
 
-      <div className="relative aspect-[4/5] w-full overflow-hidden">
-        <img
-          src={post.media}
-          alt={post.caption}
-          width={768}
-          height={1024}
-          loading="lazy"
-          className={`size-full object-cover transition-all duration-500 ${isLocked ? "scale-110 blur-2xl brightness-50" : ""}`}
-        />
-        {!isLocked && post.type === "vídeo" && (
+      <div className="relative aspect-[4/5] overflow-hidden">
+        <img src={post.media_url} alt={post.caption ?? "Post"} width={600} height={750} loading="lazy"
+          className={`size-full object-cover transition-all ${isLocked ? "scale-110 blur-2xl brightness-50" : ""}`} />
+        {!isLocked && post.media_type === "vídeo" && (
           <span className="absolute inset-0 grid place-items-center">
             <span className="grid size-16 place-items-center rounded-full bg-black/50 backdrop-blur-md">
               <Play className="size-7 text-foreground" fill="currentColor" />
@@ -217,21 +196,12 @@ function PostCard({
             <span className="grid size-16 place-items-center rounded-full border border-gold/40 bg-black/50 shadow-gold backdrop-blur-md">
               <Lock className="size-7 text-gold" />
             </span>
-            <p className="text-sm font-semibold text-foreground/90">Conteúdo VIP bloqueado</p>
+            <p className="text-sm font-semibold">Conteúdo VIP bloqueado</p>
             <button
-              onClick={() => {
-                if (actions.unlock(post.id, post.price)) toast("Mídia desbloqueada 🔓");
-                else toast.error("Saldo insuficiente", { description: "Recarregue na Loja VIP." });
-              }}
-              className="tap-scale flex items-center gap-2 rounded-full bg-gradient-gold px-5 py-3 shadow-gold"
-            >
+              onClick={() => { if (actions.unlock(post.id, post.coin_price)) toast("Mídia desbloqueada 🔓"); else toast.error("Saldo insuficiente. Recarregue na Loja."); }}
+              className="tap-scale flex items-center gap-2 rounded-full bg-gradient-gold px-5 py-3 shadow-gold">
               <Coins className="size-4 text-gold-foreground" />
-              <span className="text-sm font-bold text-gold-foreground">
-                Desbloquear por {post.price} moedas
-              </span>
-            </button>
-            <button className="text-xs font-semibold text-muted-foreground underline underline-offset-4">
-              ou pagar com Pix
+              <span className="text-sm font-bold text-gold-foreground">Desbloquear por {post.coin_price} moedas</span>
             </button>
           </div>
         )}
@@ -240,80 +210,66 @@ function PostCard({
       <footer className="space-y-2 p-3">
         <div className="flex items-center gap-4">
           <button onClick={onLike} className="tap-scale flex items-center gap-1.5 text-sm text-muted-foreground">
-            <Heart
-              className={`size-5 transition-colors ${liked ? "text-primary" : "text-muted-foreground"}`}
-              fill={liked ? "currentColor" : "none"}
-            />
+            <Heart className={`size-5 transition-colors ${liked ? "text-primary" : ""}`} fill={liked ? "currentColor" : "none"} />
             <span className="font-semibold tabular-nums">{post.likes + (liked ? 1 : 0)}</span>
           </button>
           <button className="tap-scale flex items-center gap-1.5 text-sm text-muted-foreground">
-            <MessageCircle className="size-5" />
-            <span className="font-semibold">Comentar</span>
+            <MessageCircle className="size-5" /><span className="font-semibold">Comentar</span>
           </button>
-          <button className="tap-scale ml-auto text-muted-foreground">
-            <Send className="size-5" />
-          </button>
+          <button className="tap-scale ml-auto text-muted-foreground"><Send className="size-5" /></button>
         </div>
-        <p className="text-sm text-foreground/85">
-          <span className="font-bold">{post.author.name}</span> {post.caption}
-        </p>
+        {post.caption && (
+          <p className="text-sm"><span className="font-bold">{post.author.name}</span> {post.caption}</p>
+        )}
       </footer>
     </article>
   );
 }
 
-function PostModal({ onClose }: { onClose: () => void }) {
+function PostModal({ onClose, profileId, onPosted }: {
+  onClose: () => void; profileId: string | null; onPosted: (p: RichPost) => void;
+}) {
   const [price, setPrice] = useState(60);
+  const [caption, setCaption] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function publish() {
+    if (!profileId) { toast.error("Faça login primeiro."); return; }
+    setSaving(true);
+    const { data, error } = await supabase
+      .from("feed_posts")
+      .insert({ author_id: profileId, caption: caption.trim() || null, media_url: "https://images.pexels.com/photos/20459105/pexels-photo-20459105.jpeg?auto=compress&cs=tinysrgb&w=600", media_type: "foto", is_locked: price > 0, coin_price: price, likes: 0 })
+      .select("*, profiles!inner(*)")
+      .single();
+    setSaving(false);
+    if (error || !data) { toast.error("Erro ao publicar."); return; }
+    onPosted({ ...(data as DbFeedPost), author: (data as Record<string, unknown>).profiles as DbProfile });
+    onClose();
+    toast("Mídia VIP publicada ✨", { description: `Preço: ${price} moedas` });
+  }
+
   return (
     <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/70 backdrop-blur-sm">
       <div className="glass-panel w-full max-w-[30rem] animate-in slide-in-from-bottom rounded-t-[2rem] p-5 pb-[calc(env(safe-area-inset-bottom)+1.5rem)]">
         <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-border" />
         <h2 className="text-lg font-extrabold">Postar Mídia VIP</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Envie uma foto ou vídeo e defina o preço de desbloqueio.
-        </p>
-
         <button className="mt-4 flex w-full flex-col items-center gap-2 rounded-2xl border border-dashed border-gold/40 bg-gold/5 px-4 py-8">
           <Upload className="size-6 text-gold" />
           <span className="text-sm font-semibold text-gold">Selecionar imagem ou vídeo</span>
           <span className="text-xs text-muted-foreground">MP4, JPG ou PNG até 200 MB</span>
         </button>
-
         <label className="mt-4 block text-xs font-semibold text-muted-foreground">Legenda</label>
-        <input
-          placeholder="Escreva uma chamada irresistível..."
-          className="mt-1.5 w-full rounded-2xl border border-input bg-background px-4 py-3 text-sm outline-none focus:border-primary"
-        />
-
+        <input value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="Escreva uma chamada irresistível..."
+          className="mt-1.5 w-full rounded-2xl border border-input bg-background px-4 py-3 text-sm outline-none focus:border-primary" />
         <div className="mt-4 flex items-center justify-between">
           <span className="text-xs font-semibold text-muted-foreground">Preço de desbloqueio</span>
           <span className="text-sm font-bold text-gold">{price} moedas</span>
         </div>
-        <input
-          type="range"
-          min={10}
-          max={300}
-          step={10}
-          value={price}
-          onChange={(e) => setPrice(Number(e.target.value))}
-          className="mt-2 w-full accent-[oklch(0.86_0.16_92)]"
-        />
-
+        <input type="range" min={0} max={300} step={10} value={price} onChange={(e) => setPrice(Number(e.target.value))} className="mt-2 w-full accent-[oklch(0.86_0.16_92)]" />
         <div className="mt-5 flex gap-3">
-          <button
-            onClick={onClose}
-            className="tap-scale flex-1 rounded-full border border-border bg-surface-2 py-3 text-sm font-semibold"
-          >
-            Cancelar
-          </button>
-          <button
-            onClick={() => {
-              onClose();
-              toast("Mídia VIP publicada ✨", { description: `Preço: ${price} moedas` });
-            }}
-            className="tap-scale flex-[1.4] rounded-full bg-gradient-gold py-3 text-sm font-bold text-gold-foreground shadow-gold"
-          >
-            Publicar agora
+          <button onClick={onClose} className="tap-scale flex-1 rounded-full border border-border bg-surface-2 py-3 text-sm font-semibold">Cancelar</button>
+          <button onClick={publish} disabled={saving} className="tap-scale flex-[1.4] rounded-full bg-gradient-gold py-3 text-sm font-bold text-gold-foreground shadow-gold disabled:opacity-50">
+            {saving ? "Publicando..." : "Publicar agora"}
           </button>
         </div>
       </div>

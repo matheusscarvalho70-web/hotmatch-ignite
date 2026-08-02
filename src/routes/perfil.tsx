@@ -23,10 +23,8 @@ import { EarningsDrawer } from "@/components/hotmatch/EarningsDrawer";
 import { VipModal } from "@/components/hotmatch/VipModal";
 import { StatsDrawer } from "@/components/hotmatch/StatsDrawer";
 import { SupportModal } from "@/components/hotmatch/SupportModal";
-import { photos } from "@/lib/hotmatch/data";
 import { actions, useAppState } from "@/lib/hotmatch/store";
 import { useProfile, useUserPhotos } from "@/hooks/use-profiles";
-import { DEMO_IDS } from "@/lib/hotmatch/demo";
 
 export const Route = createFileRoute("/perfil")({
   head: () => ({
@@ -47,55 +45,36 @@ export const Route = createFileRoute("/perfil")({
   component: ProfilePage,
 });
 
-const publicGallery = [photos.p1, photos.p2, photos.p3];
-const vipGallery = [
-  { src: photos.p3, price: 45 },
-  { src: photos.p1, price: 60 },
-  { src: photos.p4, price: 90 },
-  { src: photos.p2, price: 150 },
-  { src: photos.p3, price: 60 },
-  { src: photos.p1, price: 120 },
-];
 
 type ModalKey = "edit" | "privacy" | "role" | "stats" | "support" | null;
 
 function ProfilePage() {
-  const { gender, vip } = useAppState();
+  const { gender, vip, profileId, name: storeName, avatarUrl: storeAvatar } = useAppState();
   const isCreator = gender === "female";
-  const myId = DEMO_IDS[gender];
   const navigate = useNavigate();
   const [modal, setModal] = useState<ModalKey>(null);
 
-  const { profile, loading: profileLoading } = useProfile(myId);
-  const { publicPhotos, vipPhotos } = useUserPhotos(myId);
+  const { profile, loading: profileLoading } = useProfile(profileId ?? "");
+  const { publicPhotos, vipPhotos } = useUserPhotos(profileId ?? "");
 
-  // Resolve display values — DB data when loaded, sensible defaults while loading
-  const displayName   = profile?.name       ?? (isCreator ? "Bianca" : "Carlos");
-  const displayAge    = profile?.age         ?? (isCreator ? 25 : 28);
-  const displayBio    = profile?.bio         ?? "";
-  const displayAvatar = profile?.avatar_url  ?? (isCreator ? photos.p1 : photos.p3);
+  const displayName   = profile?.name      ?? storeName;
+  const displayAge    = profile?.age        ?? null;
+  const displayBio    = profile?.bio        ?? "";
+  const displayAvatar = profile?.avatar_url ?? storeAvatar;
 
-  // Gallery: use live photos when available, fall back to local asset arrays
-  const livePublic = publicPhotos.length > 0
-    ? publicPhotos.map((p) => p.photo_url)
-    : publicGallery;
-
-  const liveVip = vipPhotos.length > 0
-    ? vipPhotos.map((p) => ({ src: p.photo_url, price: p.coin_price }))
-    : vipGallery;
+  const livePublic = publicPhotos.map((p) => p.photo_url);
+  const liveVip    = vipPhotos.map((p) => ({ src: p.photo_url, price: p.coin_price }));
 
   return (
     <div className="min-h-screen pb-32">
       <TopBar title="Perfil" />
 
       <div className="relative mx-4 h-32 overflow-hidden rounded-3xl">
-        <img
-          src={displayAvatar}
-          alt="Capa do perfil"
-          width={768}
-          height={1024}
-          className="size-full object-cover object-top"
-        />
+        {displayAvatar ? (
+          <img src={displayAvatar} alt="Capa do perfil" width={768} height={1024} className="size-full object-cover object-top" />
+        ) : (
+          <div className="size-full bg-gradient-to-br from-surface-2 to-surface" />
+        )}
         <div className="absolute inset-0 bg-gradient-to-t from-background via-background/30 to-transparent" />
       </div>
 
@@ -104,18 +83,16 @@ function ProfilePage() {
           <div className="size-24 rounded-full bg-surface-2 animate-pulse" />
         ) : (
           <span className="ring-match grid size-24 place-items-center rounded-full p-[3px] shadow-gold">
-            <img
-              src={displayAvatar}
-              alt={displayName}
-              width={768}
-              height={1024}
-              className="size-full rounded-full object-cover"
-            />
+            {displayAvatar ? (
+              <img src={displayAvatar} alt={displayName} width={200} height={200} className="size-full rounded-full object-cover" />
+            ) : (
+              <div className="size-full rounded-full bg-surface-2" />
+            )}
           </span>
         )}
         <div className="mt-2 flex items-center gap-1.5">
           <h2 className="text-xl font-extrabold">
-            {displayName}, {displayAge}
+            {displayName}{displayAge ? `, ${displayAge}` : ""}
           </h2>
           <Crown className="size-4 text-gold" fill="currentColor" />
         </div>

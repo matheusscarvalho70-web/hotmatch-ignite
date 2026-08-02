@@ -2,7 +2,6 @@ import { useState } from "react";
 import { ArrowDownToLine, TrendingUp, X } from "lucide-react";
 import { toast } from "sonner";
 import { actions, formatBRL, useAppState } from "@/lib/hotmatch/store";
-import { salesHistory } from "@/lib/hotmatch/data";
 
 type Props = { open: boolean; onClose: () => void };
 
@@ -136,24 +135,10 @@ export function EarningsDrawer({ open, onClose }: Props) {
             <p className="mb-3 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
               Histórico de transações
             </p>
-            <ul className="overflow-hidden rounded-2xl border border-border bg-surface divide-y divide-border">
-              {salesHistory.map((tx) => (
-                <li key={tx.id} className="flex items-center gap-3 px-4 py-3.5">
-                  <div className="grid size-9 shrink-0 place-items-center rounded-full bg-emerald-500/15">
-                    <span className="text-sm">💸</span>
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold">{tx.label}</p>
-                    <p className="text-[11px] text-muted-foreground">
-                      {tx.who} · {tx.time}
-                    </p>
-                  </div>
-                  <span className="shrink-0 text-sm font-extrabold text-emerald-400">
-                    +{formatBRL(tx.value)}
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <div className="flex flex-col items-center gap-2 rounded-2xl border border-border bg-surface py-8 text-center">
+              <p className="text-sm font-semibold">Nenhuma transação ainda</p>
+              <p className="text-xs text-muted-foreground">Suas vendas aparecerão aqui.</p>
+            </div>
           </div>
         </div>
       </div>

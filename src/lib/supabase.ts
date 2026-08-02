@@ -18,6 +18,7 @@ export type DbProfile = {
   coin_balance: number;
   earnings_brl: number;
   is_verified: boolean;
+  is_demo: boolean;
   created_at: string;
 };
 
@@ -62,4 +63,17 @@ export type DbReport = {
   description: string | null;
   status: "pending" | "reviewed" | "resolved";
   created_at: string;
+};
+
+export type DbFeedPost = {
+  id: string;
+  author_id: string;
+  caption: string | null;
+  media_url: string;
+  media_type: "foto" | "vídeo";
+  is_locked: boolean;
+  coin_price: number;
+  likes: number;
+  created_at: string;
+  profiles?: DbProfile;
 };

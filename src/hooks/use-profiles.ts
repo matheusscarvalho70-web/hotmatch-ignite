@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase, type DbProfile, type DbUserPhoto } from "@/lib/supabase";
+import { actions, useAppState } from "@/lib/hotmatch/store";
 
 export function useProfiles() {
   const [profiles, setProfiles] = useState<DbProfile[]>([]);
@@ -26,7 +27,7 @@ export function useProfile(id: string) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!id) return;
+    if (!id) { setLoading(false); return; }
     let cancelled = false;
     supabase
       .from("profiles")
@@ -49,7 +50,7 @@ export function useUserPhotos(userId: string) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!userId) return;
+    if (!userId) { setLoading(false); return; }
     let cancelled = false;
     supabase
       .from("user_photos")
@@ -68,4 +69,32 @@ export function useUserPhotos(userId: string) {
   }, [userId]);
 
   return { publicPhotos, vipPhotos, loading };
+}
+
+/** On mount: re-hydrates store from DB if a profileId is saved in localStorage. */
+export function useSessionBootstrap() {
+  const { profileId } = useAppState();
+
+  useEffect(() => {
+    if (!profileId) return;
+    supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", profileId)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (error || !data) { actions.signOut(); return; }
+        actions.setProfile({
+          profileId: data.id,
+          gender: data.gender as "male" | "female",
+          name: data.name,
+          avatarUrl: data.avatar_url,
+          coins: data.coin_balance,
+          earnings: Number(data.earnings_brl),
+          vip: false,
+        });
+      });
+  // intentionally run once on mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 }

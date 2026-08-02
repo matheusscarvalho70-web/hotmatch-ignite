@@ -15,12 +15,11 @@ import {
   Video,
 } from "lucide-react";
 import { toast } from "sonner";
-import { gifts, profiles as staticProfiles } from "@/lib/hotmatch/data";
+import { gifts } from "@/lib/hotmatch/data";
 import { actions, useAppState } from "@/lib/hotmatch/store";
 import { useChat, type LocalMessage } from "@/hooks/use-chat";
 import { useProfiles } from "@/hooks/use-profiles";
 import { supabase } from "@/lib/supabase";
-import { DEMO_IDS, chatIdToProfileId } from "@/lib/hotmatch/demo";
 
 export const Route = createFileRoute("/mensagens/$chatId")({
   head: () => ({
@@ -46,19 +45,16 @@ const AUTO_REPLIES = [
 
 function Chat() {
   const { chatId } = useParams({ from: "/mensagens/$chatId" });
-  const { gender, unlocked } = useAppState();
-  const myId = DEMO_IDS[gender];
+  const { unlocked, profileId } = useAppState();
+  const myId = profileId ?? "";
 
-  // Resolve partner from DB or fall back to static profile list
-  const partnerId = chatIdToProfileId(chatId);
+  // chatId is the partner's DB uuid
+  const partnerId = chatId;
   const { profiles: dbProfiles } = useProfiles();
   const dbPartner = dbProfiles.find((p) => p.id === partnerId);
-  const staticFallback =
-    staticProfiles.find((p) => p.id === chatId || p.id === chatId.replace("b", "")) ??
-    staticProfiles[0];
 
-  const partnerName   = dbPartner?.name     ?? staticFallback.name;
-  const partnerAvatar = dbPartner?.avatar_url ?? staticFallback.photo;
+  const partnerName   = dbPartner?.name      ?? "Conversa";
+  const partnerAvatar = dbPartner?.avatar_url ?? null;
 
   const { messages, loading, sendText, sendAudio, sendGift } = useChat(partnerId);
 
@@ -85,16 +81,17 @@ function Chat() {
     const body = text;
     setText("");
     const { error } = await sendText(body);
-    if (error) toast.error("Erro ao enviar mensagem.");
-    // Simulated auto-reply stored in DB
-    setTimeout(async () => {
-      await supabase.from("chat_messages").insert({
-        sender_id: partnerId,
-        receiver_id: myId,
-        content: AUTO_REPLIES[Math.floor(Math.random() * AUTO_REPLIES.length)],
-        message_kind: "text",
-      });
-    }, 900);
+    if (error) { toast.error("Erro ao enviar mensagem."); return; }
+    if (myId && partnerId) {
+      setTimeout(async () => {
+        await supabase.from("chat_messages").insert({
+          sender_id: partnerId,
+          receiver_id: myId,
+          content: AUTO_REPLIES[Math.floor(Math.random() * AUTO_REPLIES.length)],
+          message_kind: "text",
+        });
+      }, 900);
+    }
   }
 
   function startRecording() {
@@ -127,8 +124,8 @@ function Chat() {
       return;
     }
     await supabase.from("reports").insert({
-      reporter_id: myId,
-      reported_user_id: partnerId,
+      reporter_id: myId || null,
+      reported_user_id: partnerId || null,
       subject: reportSubject,
       description: reportDesc,
     });
@@ -147,13 +144,11 @@ function Chat() {
         <Link to="/mensagens" className="tap-scale grid size-9 place-items-center rounded-full">
           <ArrowLeft className="size-5" />
         </Link>
-        <img
-          src={partnerAvatar}
-          alt={partnerName}
-          width={768}
-          height={1024}
-          className="size-10 rounded-full object-cover"
-        />
+        {partnerAvatar ? (
+          <img src={partnerAvatar} alt={partnerName} width={128} height={128} className="size-10 rounded-full object-cover" />
+        ) : (
+          <div className="size-10 rounded-full bg-surface-2" />
+        )}
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-bold">{partnerName}</p>
           <p className="text-[11px] text-primary">online agora</p>
@@ -360,14 +355,16 @@ function Chat() {
                       await sendGift(g.emoji, g.name, g.price);
                       setGiftOpen(false);
                       toast(`${g.emoji} ${g.name} enviado!`, { description: `-${g.price} moedas` });
-                      setTimeout(async () => {
-                        await supabase.from("chat_messages").insert({
-                          sender_id: partnerId,
-                          receiver_id: myId,
-                          content: `Amooooo! Obrigada pelo ${g.name} ${g.emoji} 😍`,
-                          message_kind: "text",
-                        });
-                      }, 1000);
+                      if (myId && partnerId) {
+                        setTimeout(async () => {
+                          await supabase.from("chat_messages").insert({
+                            sender_id: partnerId,
+                            receiver_id: myId,
+                            content: `Amooooo! Obrigada pelo ${g.name} ${g.emoji} 😍`,
+                            message_kind: "text",
+                          });
+                        }, 1000);
+                      }
                     } else {
                       toast.error("Saldo insuficiente");
                     }

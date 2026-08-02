@@ -1,8 +1,16 @@
 import { useState } from "react";
 import { Camera, X } from "lucide-react";
 import { toast } from "sonner";
-import { photos } from "@/lib/hotmatch/data";
 import { useAppState } from "@/lib/hotmatch/store";
+
+const PLACEHOLDER_AVATARS = [
+  "https://images.pexels.com/photos/15719223/pexels-photo-15719223.jpeg?auto=compress&cs=tinysrgb&w=400",
+  "https://images.pexels.com/photos/20459105/pexels-photo-20459105.jpeg?auto=compress&cs=tinysrgb&w=400",
+  "https://images.pexels.com/photos/1066109/pexels-photo-1066109.jpeg?auto=compress&cs=tinysrgb&w=400",
+  "https://images.pexels.com/photos/33949302/pexels-photo-33949302.jpeg?auto=compress&cs=tinysrgb&w=400",
+  "https://images.pexels.com/photos/7304337/pexels-photo-7304337.jpeg?auto=compress&cs=tinysrgb&w=400",
+  "https://images.pexels.com/photos/16974331/pexels-photo-16974331.jpeg?auto=compress&cs=tinysrgb&w=400",
+];
 
 type Props = { open: boolean; onClose: () => void };
 
@@ -10,25 +18,21 @@ export function EditProfileModal({ open, onClose }: Props) {
   const { gender } = useAppState();
   const isCreator = gender === "female";
 
-  const [name, setName] = useState(isCreator ? "Bianca" : "Carlos");
-  const [age, setAge] = useState(isCreator ? "25" : "28");
+  const { name: storeName, avatarUrl } = useAppState();
+  const [name, setName] = useState(storeName || (isCreator ? "Criadora" : "Usuário"));
+  const [age, setAge] = useState("");
   const [bio, setBio] = useState(
-    isCreator
-      ? "Amo noites de neon, drinks e boas conversas. Criadora de conteúdo exclusivo 🔥"
-      : "Apaixonado por música, viagens e boa conversa.",
+    isCreator ? "Criadora de conteúdo exclusivo 🔥" : "Aqui para se conectar!",
   );
-  const [location, setLocation] = useState("São Paulo, SP");
+  const [location, setLocation] = useState("Brasil");
 
-  // Avatar
-  const [hasAvatar, setHasAvatar] = useState(true);
+  const [hasAvatar, setHasAvatar] = useState(!!avatarUrl);
 
-  // Public gallery: 3 slots (plus avatar = 4 total)
-  const PUBLIC_SRCS = [photos.p2, photos.p3, photos.p4];
-  const [publicFilled, setPublicFilled] = useState([true, true, false]);
+  const PUBLIC_SRCS = PLACEHOLDER_AVATARS.slice(0, 3);
+  const [publicFilled, setPublicFilled] = useState([false, false, false]);
 
-  // VIP gallery: 6 slots (creator only)
-  const VIP_SRCS = [photos.p3, photos.p4, photos.p1, photos.p2, photos.p3, photos.p4];
-  const [vipFilled, setVipFilled] = useState([true, true, false, false, false, false]);
+  const VIP_SRCS = PLACEHOLDER_AVATARS;
+  const [vipFilled, setVipFilled] = useState([false, false, false, false, false, false]);
 
   function save() {
     toast("Alterações salvas! ✨", {
@@ -71,7 +75,7 @@ export function EditProfileModal({ open, onClose }: Props) {
               <div className="ring-match grid size-24 place-items-center rounded-full p-[3px] shadow-gold">
                 {hasAvatar ? (
                   <img
-                    src={isCreator ? photos.p1 : photos.p3}
+                    src={avatarUrl ?? PLACEHOLDER_AVATARS[0]}
                     alt="Avatar"
                     className="size-full rounded-full object-cover"
                   />

@@ -7,10 +7,13 @@ import {
   useRouterState,
   HeadContent,
   Scripts,
+  useNavigate,
 } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { BottomNav } from "@/components/hotmatch/BottomNav";
+import { useSessionBootstrap } from "@/hooks/use-profiles";
+import { useAppState } from "@/lib/hotmatch/store";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
@@ -55,10 +58,7 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
         </p>
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <button
-            onClick={() => {
-              router.invalidate();
-              reset();
-            }}
+            onClick={() => { router.invalidate(); reset(); }}
             className="inline-flex items-center justify-center rounded-full bg-gradient-hot px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-hot"
           >
             Tentar de novo
@@ -123,15 +123,37 @@ function RootShell({ children }: { children: ReactNode }) {
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const isChat = /^\/mensagens\/.+/.test(pathname) || pathname.startsWith("/bem-vindo");
+  const hideNav = /^\/mensagens\/.+/.test(pathname) || pathname.startsWith("/bem-vindo");
+
+  // Bootstrap session from DB on every app load
+  useSessionBootstrap();
 
   return (
     <QueryClientProvider client={queryClient}>
       <div className="relative mx-auto min-h-screen w-full max-w-[30rem] overflow-x-hidden bg-background">
+        <AuthGuard />
         <Outlet />
-        {!isChat && <BottomNav />}
+        {!hideNav && <BottomNav />}
       </div>
       <Toaster position="top-center" />
     </QueryClientProvider>
   );
+}
+
+/** Redirects unauthenticated users to /bem-vindo on every protected route. */
+function AuthGuard() {
+  const { profileId } = useAppState();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const navigate = useNavigate();
+
+  const publicPaths = ["/bem-vindo"];
+  const isPublic = publicPaths.some((p) => pathname.startsWith(p));
+
+  useEffect(() => {
+    if (!isPublic && !profileId) {
+      navigate({ to: "/bem-vindo", replace: true });
+    }
+  }, [profileId, isPublic, pathname, navigate]);
+
+  return null;
 }

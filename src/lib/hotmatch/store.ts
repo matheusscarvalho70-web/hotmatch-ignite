@@ -1,56 +1,124 @@
 import { useSyncExternalStore } from "react";
 
 export type Role = "buyer" | "creator";
-
 export type Gender = "male" | "female";
 
 export type AppState = {
-  coins: number;
+  profileId: string | null;
   gender: Gender;
   role: Role;
+  name: string;
+  avatarUrl: string | null;
+  coins: number;
   earnings: number;
   unlocked: string[];
   vip: boolean;
   followed: string[];
 };
 
-let state: AppState = {
-  coins: 320,
+const STORAGE_KEY = "hm_session_v3";
+
+function loadFromStorage(): Partial<AppState> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as Partial<AppState>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function persist(s: AppState) {
+  try {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        profileId: s.profileId,
+        gender: s.gender,
+        role: s.role,
+        name: s.name,
+        avatarUrl: s.avatarUrl,
+        coins: s.coins,
+        earnings: s.earnings,
+        vip: s.vip,
+      }),
+    );
+  } catch { /* quota */ }
+}
+
+const defaultState: AppState = {
+  profileId: null,
   gender: "male",
   role: "buyer",
-  earnings: 2480.5,
+  name: "",
+  avatarUrl: null,
+  coins: 0,
+  earnings: 0,
   unlocked: [],
   vip: false,
   followed: [],
 };
 
-const listeners = new Set<() => void>();
+const persisted = loadFromStorage();
 
-function emit() {
-  for (const l of listeners) l();
-}
+let state: AppState = {
+  ...defaultState,
+  ...persisted,
+  unlocked: [],
+  followed: [],
+};
+
+const listeners = new Set<() => void>();
+const emit = () => listeners.forEach((l) => l());
 
 function subscribe(cb: () => void) {
   listeners.add(cb);
   return () => listeners.delete(cb);
 }
 
-function getSnapshot() {
-  return state;
-}
+function getSnapshot() { return state; }
 
 export function useAppState(): AppState {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
 
 export const actions = {
+  setProfile(p: {
+    profileId: string;
+    gender: Gender;
+    name: string;
+    avatarUrl: string | null;
+    coins: number;
+    earnings: number;
+    vip?: boolean;
+  }) {
+    state = {
+      ...state,
+      profileId: p.profileId,
+      gender: p.gender,
+      role: p.gender === "female" ? "creator" : "buyer",
+      name: p.name,
+      avatarUrl: p.avatarUrl,
+      coins: p.coins,
+      earnings: p.earnings,
+      vip: p.vip ?? false,
+    };
+    persist(state);
+    emit();
+  },
+  setGender(gender: Gender) {
+    state = { ...state, gender, role: gender === "female" ? "creator" : "buyer" };
+    persist(state);
+    emit();
+  },
   addCoins(amount: number) {
     state = { ...state, coins: state.coins + amount };
+    persist(state);
     emit();
   },
   spendCoins(amount: number): boolean {
     if (state.coins < amount) return false;
     state = { ...state, coins: state.coins - amount };
+    persist(state);
     emit();
     return true;
   },
@@ -58,12 +126,9 @@ export const actions = {
     if (state.unlocked.includes(id)) return true;
     if (state.coins < price) return false;
     state = { ...state, coins: state.coins - price, unlocked: [...state.unlocked, id] };
+    persist(state);
     emit();
     return true;
-  },
-  setGender(gender: Gender) {
-    state = { ...state, gender, role: gender === "female" ? "creator" : "buyer" };
-    emit();
   },
   toggleRole() {
     state = { ...state, role: state.role === "buyer" ? "creator" : "buyer" };
@@ -71,10 +136,12 @@ export const actions = {
   },
   activateVip() {
     state = { ...state, vip: true };
+    persist(state);
     emit();
   },
   withdraw(amount: number) {
     state = { ...state, earnings: Math.max(0, state.earnings - amount) };
+    persist(state);
     emit();
   },
   follow(profileId: string) {
@@ -87,15 +154,8 @@ export const actions = {
     emit();
   },
   signOut() {
-    state = {
-      coins: 320,
-      gender: "male",
-      role: "buyer",
-      earnings: 2480.5,
-      unlocked: [],
-      vip: false,
-      followed: [],
-    };
+    state = { ...defaultState, unlocked: [], followed: [] };
+    try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
     emit();
   },
 };

@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { TopBar } from "@/components/hotmatch/TopBar";
-import { coinPacks, salesHistory } from "@/lib/hotmatch/data";
+import { coinPacks } from "@/lib/hotmatch/data";
 import { actions, formatBRL, useAppState } from "@/lib/hotmatch/store";
 
 export const Route = createFileRoute("/loja")({
@@ -219,22 +219,10 @@ function CreatorView() {
       </div>
 
       <h2 className="mb-2 mt-6 text-sm font-extrabold">Transações recentes</h2>
-      <ul className="overflow-hidden rounded-3xl border border-border bg-surface">
-        {salesHistory.map((s) => (
-          <li
-            key={s.id}
-            className="flex items-center gap-3 border-b border-border px-4 py-3 last:border-0"
-          >
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold">{s.label}</p>
-              <p className="text-[11px] text-muted-foreground">
-                {s.who} · {s.time}
-              </p>
-            </div>
-            <span className="shrink-0 text-sm font-bold text-gold">+{formatBRL(s.value)}</span>
-          </li>
-        ))}
-      </ul>
+      <div className="flex flex-col items-center gap-2 rounded-3xl border border-border bg-surface py-8 text-center">
+        <p className="text-sm font-semibold">Nenhuma transação ainda</p>
+        <p className="text-xs text-muted-foreground">Suas vendas e compras aparecerão aqui.</p>
+      </div>
 
       {open && (
         <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/70 backdrop-blur-sm">
