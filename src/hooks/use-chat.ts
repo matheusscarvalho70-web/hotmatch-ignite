@@ -104,14 +104,23 @@ export function useChat(partnerId: string) {
 
   async function sendText(text: string): Promise<{ error: Error | null }> {
     if (!myId) return { error: new Error("Not logged in") };
-    const { error } = await supabase.from("chat_messages").insert({
-      sender_id: myId,
-      receiver_id: partnerId,
-      content: text,
-      message_kind: "text",
-    });
-    if (error) return { error: new Error(error.message) };
-    return { error: null };
+    try {
+      const { error } = await supabase.from("chat_messages").insert({
+        sender_id: myId,
+        receiver_id: partnerId,
+        content: text,
+      });
+      if (error) {
+        console.error("[Chat] sendText Supabase error:", error);
+        return { error: new Error(error.message) };
+      }
+      // Notify the recipient via OneSignal — "Nova mensagem!"
+      notifyPartner(partnerId, "Nova mensagem!", text);
+      return { error: null };
+    } catch (err) {
+      console.error("[Chat] sendText exception:", err);
+      return { error: err instanceof Error ? err : new Error("Unknown error") };
+    }
   }
 
   async function sendMedia(mediaUrl: string, mediaType: string): Promise<{ error: Error | null }> {
@@ -132,16 +141,23 @@ export function useChat(partnerId: string) {
 
   async function sendAudio(seconds: number): Promise<{ error: Error | null }> {
     if (!myId) return { error: new Error("Not logged in") };
-    const { error } = await supabase.from("chat_messages").insert({
-      sender_id: myId,
-      receiver_id: partnerId,
-      content: null,
-      audio_seconds: seconds,
-      message_kind: "audio",
-    });
-    if (error) return { error: new Error(error.message) };
-    notifyPartner(partnerId, "🎤 Áudio recebido", "Novo áudio para você");
-    return { error: null };
+    try {
+      const { error } = await supabase.from("chat_messages").insert({
+        sender_id: myId,
+        receiver_id: partnerId,
+        audio_seconds: seconds,
+        message_kind: "audio",
+      });
+      if (error) {
+        console.error("[Chat] sendAudio Supabase error:", error);
+        return { error: new Error(error.message) };
+      }
+      notifyPartner(partnerId, "🎤 Áudio recebido", "Novo áudio para você");
+      return { error: null };
+    } catch (err) {
+      console.error("[Chat] sendAudio exception:", err);
+      return { error: err instanceof Error ? err : new Error("Unknown error") };
+    }
   }
 
   async function sendLockedMedia(mediaUrl: string, price: number): Promise<void> {

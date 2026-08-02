@@ -1,10 +1,77 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase, type DbProfile, type DbUserPhoto } from "@/lib/supabase";
 import { actions, useAppState } from "@/lib/hotmatch/store";
 import { loginOneSignal } from "@/lib/hotmatch/onesignal";
 
-export function useProfiles() {
-  const [profiles, setProfiles] = useState<DbProfile[]>([]);
+/** Haversine great-circle distance in km between two lat/lng points. */
+export function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+/**
+ * Persist the browser-resolved coordinates back to the profiles row.
+ * Called by useUserLocation; safe to call multiple times.
+ */
+export async function updateUserLocation(
+  profileId: string,
+  lat: number,
+  lng: number,
+): Promise<void> {
+  if (!profileId) return;
+  const { error } = await supabase
+    .from("profiles")
+    .update({ latitude: lat, longitude: lng })
+    .eq("id", profileId);
+  if (error) console.warn("[Location] DB update failed:", error.message);
+}
+
+// Module-level cache so multiple components sharing the hook don't trigger two
+// permission prompts during the same page session.
+let _cachedCoords: { lat: number; lng: number } | null = null;
+
+/**
+ * On mount, requests the browser's current position, saves it to the DB, and
+ * returns it for use in distance-based sorting.
+ * Triggers when the Discover or Feed tab is opened while the user is logged in.
+ */
+export function useUserLocation(profileId: string) {
+  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(_cachedCoords);
+
+  useEffect(() => {
+    if (!profileId) return;
+    if (_cachedCoords) { setCoords(_cachedCoords); return; }
+    if (!navigator?.geolocation) return;
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        _cachedCoords = { lat, lng };
+        setCoords({ lat, lng });
+        updateUserLocation(profileId, lat, lng).catch(() => {});
+      },
+      (err) => console.warn("[Location] Browser geolocation failed:", err.message),
+      { timeout: 10_000, enableHighAccuracy: false },
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profileId]);
+
+  return coords;
+}
+
+/**
+ * Fetches all profiles once, then sorts them by distance from the user when
+ * coordinates are available. Profiles without coordinates sort to the end.
+ */
+export function useProfiles(userLat?: number, userLng?: number) {
+  const [rawProfiles, setRawProfiles] = useState<DbProfile[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -14,11 +81,26 @@ export function useProfiles() {
       .select("*")
       .order("created_at", { ascending: true })
       .then(({ data, error }) => {
-        if (!cancelled && !error && data) setProfiles(data as DbProfile[]);
+        if (!cancelled && !error && data) setRawProfiles(data as DbProfile[]);
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
   }, []);
+
+  const profiles = useMemo(() => {
+    if (userLat == null || userLng == null) return rawProfiles;
+    return [...rawProfiles].sort((a, b) => {
+      const da =
+        a.latitude != null && a.longitude != null
+          ? haversineKm(userLat, userLng, a.latitude, a.longitude)
+          : Infinity;
+      const db =
+        b.latitude != null && b.longitude != null
+          ? haversineKm(userLat, userLng, b.latitude, b.longitude)
+          : Infinity;
+      return da - db;
+    });
+  }, [rawProfiles, userLat, userLng]);
 
   return { profiles, loading };
 }

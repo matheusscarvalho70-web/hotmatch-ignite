@@ -1,7 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, Coins, Crown, Heart, Lock, MessageCircle, Play, Plus, Send, Upload, UserPlus } from "lucide-react";
 import { toast } from "sonner";
+import { haversineKm, useUserLocation } from "@/hooks/use-profiles";
 import { TopBar } from "@/components/hotmatch/TopBar";
 import { actions, useAppState } from "@/lib/hotmatch/store";
 import { supabase, type DbFeedPost, type DbProfile } from "@/lib/supabase";
@@ -32,6 +33,8 @@ async function fetchPosts(): Promise<RichPost[]> {
 function Feed() {
   const { gender, followed, profileId } = useAppState();
   const isCreator = gender === "female";
+  // Request browser location on mount; used to sort general feed by author proximity
+  const coords = useUserLocation(profileId ?? "");
 
   const tabs: { id: FeedTab; label: string }[] = isCreator
     ? [{ id: "geral", label: "Feed Geral" }, { id: "meus", label: "Meus Posts" }]
@@ -57,10 +60,25 @@ function Feed() {
     return () => { cancelled = true; supabase.removeChannel(ch); };
   }, []);
 
-  const displayPosts =
-    activeTab === "following" ? allPosts.filter((p) => followed.includes(p.author_id))
-    : activeTab === "meus" ? allPosts.filter((p) => p.author_id === profileId)
-    : allPosts;
+  // Sort general-feed posts by author proximity when the user's coordinates are available
+  const displayPosts = useMemo(() => {
+    const base =
+      activeTab === "following" ? allPosts.filter((p) => followed.includes(p.author_id))
+      : activeTab === "meus"    ? allPosts.filter((p) => p.author_id === profileId)
+      : allPosts;
+    if (activeTab !== "geral" || !coords) return base;
+    return [...base].sort((a, b) => {
+      const da =
+        a.author?.latitude != null && a.author?.longitude != null
+          ? haversineKm(coords.lat, coords.lng, a.author.latitude, a.author.longitude)
+          : Infinity;
+      const db =
+        b.author?.latitude != null && b.author?.longitude != null
+          ? haversineKm(coords.lat, coords.lng, b.author.latitude, b.author.longitude)
+          : Infinity;
+      return da - db;
+    });
+  }, [allPosts, activeTab, followed, profileId, coords]);
 
   return (
     <div className="min-h-screen pb-32">

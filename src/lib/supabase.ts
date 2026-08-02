@@ -20,6 +20,8 @@ export type DbProfile = {
   is_verified: boolean;
   is_demo: boolean;
   onesignal_player_id: string | null;
+  latitude: number | null;
+  longitude: number | null;
   created_at: string;
 };
 

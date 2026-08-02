@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { BadgeCheck, Crown, Heart, MapPin, RotateCcw, Sparkles, Star, X } from "lucide-react";
 import { toast } from "sonner";
 import { TopBar } from "@/components/hotmatch/TopBar";
-import { useProfiles } from "@/hooks/use-profiles";
+import { useProfiles, useUserLocation } from "@/hooks/use-profiles";
 import { useAppState } from "@/lib/hotmatch/store";
 import type { DbProfile } from "@/lib/supabase";
 
@@ -26,7 +26,9 @@ export const Route = createFileRoute("/")({
 function Discover() {
   const { profileId } = useAppState();
   const navigate = useNavigate();
-  const { profiles, loading } = useProfiles();
+  // Request browser location on mount, save to DB, and return coords for distance sort
+  const coords = useUserLocation(profileId ?? "");
+  const { profiles, loading } = useProfiles(coords?.lat, coords?.lng);
 
   // Show only profiles that are NOT the current user and are female (for male buyer) or male (for female creator)
   const deck = useMemo(() => {
