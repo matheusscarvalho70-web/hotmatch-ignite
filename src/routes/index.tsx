@@ -3,9 +3,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { BadgeCheck, Crown, Heart, MapPin, RotateCcw, Sparkles, Star, X } from "lucide-react";
 import { toast } from "sonner";
 import { TopBar } from "@/components/hotmatch/TopBar";
-import { useProfiles, useUserLocation } from "@/hooks/use-profiles";
+import { haversineKm, useProfiles, useUserLocation } from "@/hooks/use-profiles";
+import { recordMatch } from "@/hooks/use-matches";
 import { useAppState } from "@/lib/hotmatch/store";
-import type { DbProfile } from "@/lib/supabase";
+import { supabase, type DbProfile } from "@/lib/supabase";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -28,9 +29,26 @@ function Discover() {
   const navigate = useNavigate();
   // Request browser location on mount, save to DB, and return coords for distance sort
   const coords = useUserLocation(profileId ?? "");
-  const { profiles, loading } = useProfiles(coords?.lat, coords?.lng);
 
-  // Show only profiles that are NOT the current user and are female (for male buyer) or male (for female creator)
+  // Load all target IDs this user has already swiped (like or pass) so they are excluded from the deck
+  const [swipedIds, setSwipedIds] = useState<string[]>([]);
+  useEffect(() => {
+    if (!profileId) return;
+    let cancelled = false;
+    supabase
+      .from("matches")
+      .select("target_user_id")
+      .eq("user_id", profileId)
+      .then(({ data }) => {
+        if (!cancelled && data)
+          setSwipedIds(data.map((r) => (r as { target_user_id: string }).target_user_id));
+      });
+    return () => { cancelled = true; };
+  }, [profileId]);
+
+  const { profiles, loading } = useProfiles(coords?.lat, coords?.lng, swipedIds);
+
+  // Exclude the current user; show only female profiles
   const deck = useMemo(() => {
     if (!profiles.length) return [];
     return profiles.filter((p) => p.id !== profileId && p.gender === "female");
@@ -50,7 +68,12 @@ function Discover() {
   const next = deck[(index + 1) % Math.max(deck.length, 1)];
 
   function decide(dir: "left" | "right" | "up") {
-    if (!current) return;
+    if (!current || !profileId) return;
+    const action: "like" | "pass" = dir === "left" ? "pass" : "like";
+    recordMatch(profileId, current.id, action).then(({ mutualMatch }) => {
+      if (mutualMatch) toast("Match mútuo! 🔥", { description: `Você e ${current.name} se curtiram!` });
+    });
+    setSwipedIds((prev) => [...prev, current.id]);
     setLeaving(dir);
     if (dir === "right") toast("Curtida enviada 💗", { description: `Você curtiu ${current.name}` });
     if (dir === "up") toast("Super Like ⭐", { description: `${current.name} vai ver seu Super Like primeiro` });
@@ -123,7 +146,13 @@ function Discover() {
             else setDrag({ x: 0, y: 0, active: false });
           }}
         >
-          <CardShell profile={current} stamp={drag.x} stampUp={drag.y} />
+          <CardShell
+            profile={current}
+            stamp={drag.x}
+            stampUp={drag.y}
+            userLat={coords?.lat}
+            userLng={coords?.lng}
+          />
         </div>
       </div>
 
@@ -162,12 +191,26 @@ function CardShell({
   className = "",
   stamp = 0,
   stampUp = 0,
+  userLat,
+  userLng,
 }: {
   profile: DbProfile;
   className?: string;
   stamp?: number;
   stampUp?: number;
+  userLat?: number;
+  userLng?: number;
 }) {
+  const distanceLabel: string | null = useMemo(() => {
+    if (userLat == null || userLng == null || profile.latitude == null || profile.longitude == null)
+      return null;
+    const km = haversineKm(userLat, userLng, profile.latitude, profile.longitude);
+    if (km < 1) return "A menos de 1 km de você";
+    return `A ${Math.round(km)} km de você`;
+  }, [userLat, userLng, profile.latitude, profile.longitude]);
+
+  const locationText = distanceLabel ?? profile.location;
+
   return (
     <div className={`absolute inset-0 overflow-hidden rounded-[2rem] bg-surface shadow-card-premium ${className}`}>
       {profile.avatar_url ? (
@@ -191,10 +234,10 @@ function CardShell({
         </div>
       )}
 
-      {profile.location && (
+      {locationText && (
         <div className="absolute right-4 top-4 flex items-center gap-1 rounded-full bg-black/50 px-2.5 py-1 backdrop-blur-md">
           <MapPin className="size-3.5 text-foreground/80" />
-          <span className="text-[11px] font-medium text-foreground/90">{profile.location}</span>
+          <span className="text-[11px] font-medium text-foreground/90">{locationText}</span>
         </div>
       )}
 

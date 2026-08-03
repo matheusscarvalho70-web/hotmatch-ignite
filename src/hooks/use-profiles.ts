@@ -70,7 +70,7 @@ export function useUserLocation(profileId: string) {
  * Fetches all profiles once, then sorts them by distance from the user when
  * coordinates are available. Profiles without coordinates sort to the end.
  */
-export function useProfiles(userLat?: number, userLng?: number) {
+export function useProfiles(userLat?: number, userLng?: number, excludeIds: string[] = []) {
   const [rawProfiles, setRawProfiles] = useState<DbProfile[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -88,8 +88,12 @@ export function useProfiles(userLat?: number, userLng?: number) {
   }, []);
 
   const profiles = useMemo(() => {
-    if (userLat == null || userLng == null) return rawProfiles;
-    return [...rawProfiles].sort((a, b) => {
+    const filtered =
+      excludeIds.length > 0
+        ? rawProfiles.filter((p) => !excludeIds.includes(p.id))
+        : rawProfiles;
+    if (userLat == null || userLng == null) return filtered;
+    return [...filtered].sort((a, b) => {
       const da =
         a.latitude != null && a.longitude != null
           ? haversineKm(userLat, userLng, a.latitude, a.longitude)
@@ -100,7 +104,7 @@ export function useProfiles(userLat?: number, userLng?: number) {
           : Infinity;
       return da - db;
     });
-  }, [rawProfiles, userLat, userLng]);
+  }, [rawProfiles, userLat, userLng, excludeIds]);
 
   return { profiles, loading };
 }
