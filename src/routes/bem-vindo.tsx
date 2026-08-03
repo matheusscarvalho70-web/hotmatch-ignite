@@ -430,16 +430,26 @@ function SignupFlow({ open, onOpenChange, gender }: {
         }
       }
 
-      /* 3 — Upload biometric selfie */
+      /* 3 — Upload biometric selfie (failure is non-fatal — account still gets created) */
       let verificationPhotoUrl: string | null = null;
       if (capturedBlob) {
-        const path = `verifications/${userId}_${Date.now()}_selfie.jpg`;
-        const { data: vd } = await supabase.storage
-          .from("photos")
-          .upload(path, capturedBlob, { upsert: true, contentType: "image/jpeg" });
-        if (vd) {
-          const { data: { publicUrl } } = supabase.storage.from("photos").getPublicUrl(vd.path);
-          verificationPhotoUrl = publicUrl;
+        try {
+          const path = `verifications/${userId}_${Date.now()}_selfie.jpg`;
+          const { data: vd, error: verErr } = await supabase.storage
+            .from("photos")
+            .upload(path, capturedBlob, { upsert: true, contentType: "image/jpeg" });
+          if (verErr) {
+            console.warn(
+              "[Signup] Biometric selfie upload failed:",
+              verErr.message || JSON.stringify(verErr),
+            );
+          } else if (vd) {
+            const { data: { publicUrl } } = supabase.storage.from("photos").getPublicUrl(vd.path);
+            verificationPhotoUrl = publicUrl;
+          }
+        } catch (uploadErr) {
+          console.warn("[Signup] Biometric selfie upload exception:", uploadErr);
+          // verificationPhotoUrl remains null — account creation continues normally
         }
       }
 
@@ -501,7 +511,11 @@ function SignupFlow({ open, onOpenChange, gender }: {
       toast.success(`Bem-vindo ao HotMatch, ${profile.name}! 🔥`);
       navigate({ to: "/" });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro desconhecido ao criar conta.");
+      const msg =
+        err instanceof Error
+          ? err.message
+          : (err as Record<string, string>)?.message || JSON.stringify(err);
+      toast.error(msg || "Erro desconhecido ao criar conta.");
     } finally {
       setSaving(false);
     }
