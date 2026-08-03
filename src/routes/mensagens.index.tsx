@@ -1,8 +1,10 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
 import { Crown, MessageCircle, Search } from "lucide-react";
 import { TopBar } from "@/components/hotmatch/TopBar";
 import { useProfiles } from "@/hooks/use-profiles";
 import { useAppState } from "@/lib/hotmatch/store";
+import { supabase } from "@/lib/supabase";
 
 export const Route = createFileRoute("/mensagens/")({
   head: () => ({
@@ -17,8 +19,35 @@ export const Route = createFileRoute("/mensagens/")({
 function Messages() {
   const { profileId } = useAppState();
   const { profiles, loading } = useProfiles();
-  // Show profiles that are not the current user and are female (potential chat partners)
-  const displayProfiles = profiles.filter((p) => p.id !== profileId && p.gender === "female");
+
+  // Compute mutual match IDs: both sides must have a "like" row.
+  const [mutualIds, setMutualIds] = useState<Set<string>>(new Set());
+  const [matchLoading, setMatchLoading] = useState(true);
+
+  useEffect(() => {
+    if (!profileId) { setMatchLoading(false); return; }
+    let cancelled = false;
+    Promise.all([
+      supabase.from("matches").select("target_user_id").eq("user_id", profileId).eq("action", "like"),
+      supabase.from("matches").select("user_id").eq("target_user_id", profileId).eq("action", "like"),
+    ]).then(([myLikes, theirLikes]) => {
+      if (cancelled) return;
+      const iLiked = new Set((myLikes.data ?? []).map((r) => (r as { target_user_id: string }).target_user_id));
+      const theyLiked = new Set((theirLikes.data ?? []).map((r) => (r as { user_id: string }).user_id));
+      setMutualIds(new Set([...iLiked].filter((id) => theyLiked.has(id))));
+      setMatchLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [profileId]);
+
+  // Show only profiles where there is a confirmed mutual match.
+  // Demo partners always appear so the demo flow is never blocked.
+  const isLoading = loading || matchLoading;
+  const displayProfiles = profiles.filter((p) => {
+    if (p.id === profileId) return false;
+    if (p.is_demo) return true;
+    return mutualIds.has(p.id);
+  });
 
   return (
     <div className="min-h-screen pb-32">
@@ -34,7 +63,7 @@ function Messages() {
       <section className="mt-5">
         <h2 className="px-4 text-xs font-bold uppercase tracking-widest text-muted-foreground">Matches recentes</h2>
         <div className="no-scrollbar mt-3 flex gap-3 overflow-x-auto px-4 pb-1">
-          {loading
+          {isLoading
             ? Array.from({ length: 5 }).map((_, i) => (
                 <div key={i} className="flex w-16 shrink-0 flex-col items-center gap-1.5">
                   <div className="size-16 rounded-full bg-surface-2 animate-pulse" />
@@ -58,7 +87,7 @@ function Messages() {
       <section className="mt-6">
         <h2 className="px-4 text-xs font-bold uppercase tracking-widest text-muted-foreground">Conversas</h2>
         <ul className="mt-2 px-2">
-          {loading
+          {isLoading
             ? Array.from({ length: 4 }).map((_, i) => (
                 <li key={i} className="flex items-center gap-3 rounded-2xl px-2 py-3">
                   <div className="size-14 shrink-0 rounded-full bg-surface-2 animate-pulse" />
@@ -73,8 +102,8 @@ function Messages() {
                   <div className="grid size-14 place-items-center rounded-full bg-surface-2">
                     <MessageCircle className="size-6 text-muted-foreground" />
                   </div>
-                  <p className="text-sm font-semibold">Nenhuma conversa ainda</p>
-                  <p className="max-w-xs text-xs text-muted-foreground">Dê um match no feed e comece a conversar!</p>
+                  <p className="text-sm font-semibold">Nenhum match ainda</p>
+                  <p className="max-w-xs text-xs text-muted-foreground">Dê match mútuo no feed para começar a conversar!</p>
                 </li>
               ) : displayProfiles.map((p) => (
                 <li key={p.id}>

@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   Coins,
   Gift,
+  Heart,
   ImagePlus,
   Lock,
   Mic,
@@ -50,6 +51,23 @@ function Chat() {
   const dbPartner = dbProfiles.find((p) => p.id === partnerId);
   const partnerName = dbPartner?.name ?? "Conversa";
   const partnerAvatar = dbPartner?.avatar_url ?? null;
+
+  // Block chat until mutual match is confirmed (both sides have a "like" row).
+  // Demo partners skip this check so the demo flow always works.
+  const [hasMutualMatch, setHasMutualMatch] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!myId || !partnerId) return;
+    if (dbPartner === undefined) return; // wait for profiles to load
+    if (dbPartner?.is_demo) { setHasMutualMatch(true); return; }
+    let cancelled = false;
+    Promise.all([
+      supabase.from("matches").select("id").eq("user_id", myId).eq("target_user_id", partnerId).eq("action", "like").maybeSingle(),
+      supabase.from("matches").select("id").eq("user_id", partnerId).eq("target_user_id", myId).eq("action", "like").maybeSingle(),
+    ]).then(([iLiked, theyLiked]) => {
+      if (!cancelled) setHasMutualMatch(!!iLiked.data && !!theyLiked.data);
+    });
+    return () => { cancelled = true; };
+  }, [myId, partnerId, dbPartner]);
 
   const { messages, loading, sendText, sendMedia, sendAudio, sendGift, sendLockedMedia } = useChat(partnerId);
 
@@ -148,6 +166,23 @@ function Chat() {
     setReportSubject("");
     setReportDesc("");
     toast("Denúncia enviada. Nossa equipe analisará em até 24h. 🛡️");
+  }
+
+  if (hasMutualMatch === false) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-background px-6 text-center">
+        <span className="grid size-20 place-items-center rounded-full bg-surface-2">
+          <Heart className="size-9 text-muted-foreground" />
+        </span>
+        <h2 className="mt-4 text-lg font-extrabold">Match necessário</h2>
+        <p className="mt-2 max-w-xs text-sm text-muted-foreground">
+          Você e {partnerName} precisam dar match mútuo antes de conversar.
+        </p>
+        <Link to="/" className="tap-scale mt-6 rounded-full bg-gradient-hot px-6 py-3 text-sm font-bold text-primary-foreground shadow-hot">
+          Descobrir perfis
+        </Link>
+      </div>
+    );
   }
 
   return (

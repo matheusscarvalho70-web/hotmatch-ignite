@@ -25,7 +25,7 @@ export const Route = createFileRoute("/")({
 });
 
 function Discover() {
-  const { profileId } = useAppState();
+  const { profileId, gender } = useAppState();
   const navigate = useNavigate();
   // Request browser location on mount, save to DB, and return coords for distance sort
   const coords = useUserLocation(profileId ?? "");
@@ -48,13 +48,21 @@ function Discover() {
 
   const { profiles, loading } = useProfiles(coords?.lat, coords?.lng, swipedIds);
 
-  // Exclude the current user; show only female profiles
+  // Gender-based filter:
+  //   male  → see only female profiles
+  //   female → see all profiles (both genders, excluding self)
   const deck = useMemo(() => {
     if (!profiles.length) return [];
-    return profiles.filter((p) => p.id !== profileId && p.gender === "female");
-  }, [profiles, profileId]);
+    return profiles.filter((p) => {
+      if (p.id === profileId) return false;
+      if (gender === "male") return p.gender === "female";
+      return true;
+    });
+  }, [profiles, profileId, gender]);
 
-  const [index, setIndex] = useState(0);
+  // lockedCard holds the card currently animating off-screen so the deck can
+  // shrink (via swipedIds) without the animating card disappearing mid-flight.
+  const [lockedCard, setLockedCard] = useState<DbProfile | null>(null);
   const [drag, setDrag] = useState({ x: 0, y: 0, active: false });
   const [leaving, setLeaving] = useState<"left" | "right" | "up" | null>(null);
   const start = useRef({ x: 0, y: 0 });
@@ -64,23 +72,28 @@ function Discover() {
     if (!profileId) navigate({ to: "/bem-vindo", replace: true });
   }, [profileId, navigate]);
 
-  const current = deck[index % Math.max(deck.length, 1)];
-  const next = deck[(index + 1) % Math.max(deck.length, 1)];
+  const current: DbProfile | null = lockedCard ?? deck[0] ?? null;
+  const next: DbProfile | null = lockedCard ? (deck[0] ?? null) : (deck[1] ?? null);
 
   function decide(dir: "left" | "right" | "up") {
-    if (!current || !profileId) return;
+    const target = lockedCard ?? deck[0];
+    if (!target || !profileId) return;
     const action: "like" | "pass" = dir === "left" ? "pass" : "like";
-    recordMatch(profileId, current.id, action).then(({ mutualMatch }) => {
-      if (mutualMatch) toast("Match mútuo! 🔥", { description: `Você e ${current.name} se curtiram!` });
-    });
-    setSwipedIds((prev) => [...prev, current.id]);
+
+    setLockedCard(target);                        // freeze card during exit animation
+    setSwipedIds((prev) => [...prev, target.id]); // immediately drop from deck
     setLeaving(dir);
-    if (dir === "right") toast("Curtida enviada 💗", { description: `Você curtiu ${current.name}` });
-    if (dir === "up") toast("Super Like ⭐", { description: `${current.name} vai ver seu Super Like primeiro` });
+
+    recordMatch(profileId, target.id, action).then(({ mutualMatch }) => {
+      if (mutualMatch) toast("Match mútuo! 🔥", { description: `Você e ${target.name} se curtiram!` });
+    });
+    if (dir === "right") toast("Curtida enviada 💗", { description: `Você curtiu ${target.name}` });
+    if (dir === "up") toast("Super Like ⭐", { description: `${target.name} vai ver seu Super Like primeiro` });
+
     setTimeout(() => {
       setLeaving(null);
       setDrag({ x: 0, y: 0, active: false });
-      setIndex((i) => i + 1);
+      setLockedCard(null); // release lock — deck[0] is now the next unseen profile
     }, 260);
   }
 
@@ -158,7 +171,6 @@ function Discover() {
 
       <div className="mt-6 flex items-center justify-center gap-5">
         <button
-          onClick={() => setIndex((i) => (i > 0 ? i - 1 : i))}
           className="tap-scale grid size-12 place-items-center rounded-full border border-border bg-surface text-muted-foreground"
         >
           <RotateCcw className="size-5" />
