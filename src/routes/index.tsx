@@ -25,7 +25,7 @@ export const Route = createFileRoute("/")({
 });
 
 function Discover() {
-  const { profileId, gender } = useAppState();
+  const { profileId, gender, avatarUrl, name: myName } = useAppState();
   const navigate = useNavigate();
   // Request browser location on mount, save to DB, and return coords for distance sort
   const coords = useUserLocation(profileId ?? "");
@@ -63,6 +63,7 @@ function Discover() {
   // lockedCard holds the card currently animating off-screen so the deck can
   // shrink (via swipedIds) without the animating card disappearing mid-flight.
   const [lockedCard, setLockedCard] = useState<DbProfile | null>(null);
+  const [matchedProfile, setMatchedProfile] = useState<DbProfile | null>(null);
   const [drag, setDrag] = useState({ x: 0, y: 0, active: false });
   const [leaving, setLeaving] = useState<"left" | "right" | "up" | null>(null);
   const start = useRef({ x: 0, y: 0 });
@@ -85,7 +86,7 @@ function Discover() {
     setLeaving(dir);
 
     recordMatch(profileId, target.id, action).then(({ mutualMatch }) => {
-      if (mutualMatch) toast("Match mútuo! 🔥", { description: `Você e ${target.name} se curtiram!` });
+      if (mutualMatch) setMatchedProfile(target);
     });
     if (dir === "right") toast("Curtida enviada 💗", { description: `Você curtiu ${target.name}` });
     if (dir === "up") toast("Super Like ⭐", { description: `${target.name} vai ver seu Super Like primeiro` });
@@ -135,6 +136,18 @@ function Discover() {
   return (
     <div className="min-h-screen pb-32">
       <TopBar />
+      {matchedProfile && (
+        <MatchModal
+          partner={matchedProfile}
+          myAvatar={avatarUrl}
+          myName={myName}
+          onClose={() => setMatchedProfile(null)}
+          onMessage={() => {
+            setMatchedProfile(null);
+            navigate({ to: "/mensagens/$chatId", params: { chatId: matchedProfile.id } });
+          }}
+        />
+      )}
       <div className="relative mx-4 h-[68vh] min-h-[26rem] select-none">
         {next && next.id !== current.id && (
           <CardShell profile={next} className="scale-[0.94] opacity-60" />
@@ -198,6 +211,76 @@ function Discover() {
   );
 }
 
+/* ------------------------------------------------------------------ */
+/*  Deu Match! modal                                                    */
+/* ------------------------------------------------------------------ */
+function MatchModal({
+  partner,
+  myAvatar,
+  myName,
+  onClose,
+  onMessage,
+}: {
+  partner: DbProfile;
+  myAvatar: string | null;
+  myName: string;
+  onClose: () => void;
+  onMessage: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 px-6 backdrop-blur-sm">
+      <div className="w-full max-w-xs rounded-3xl bg-surface p-8 text-center shadow-[0_0_60px_rgba(255,60,90,0.3)]">
+        {/* Flame gradient heading */}
+        <h2 className="text-3xl font-black tracking-tight text-primary">Deu Match! 🔥</h2>
+        <p className="mt-1 text-sm text-muted-foreground">Vocês se curtiram!</p>
+
+        {/* Overlapping avatars */}
+        <div className="relative mt-6 flex items-center justify-center">
+          <div className="relative">
+            <Avatar url={myAvatar} label={myName} size="lg" />
+            <span className="absolute -right-5 top-1/2 z-10 -translate-y-1/2 text-2xl">💗</span>
+          </div>
+          <div className="ml-4">
+            <Avatar url={partner.avatar_url} label={partner.name} size="lg" ring />
+          </div>
+        </div>
+
+        <p className="mt-4 font-bold">{partner.name}</p>
+
+        {/* Actions */}
+        <button
+          onClick={onMessage}
+          className="tap-scale mt-6 w-full rounded-full bg-gradient-hot py-3 text-sm font-extrabold text-primary-foreground shadow-hot"
+        >
+          Enviar mensagem
+        </button>
+        <button
+          onClick={onClose}
+          className="tap-scale mt-3 w-full rounded-full border border-border bg-surface-2 py-3 text-sm font-semibold text-muted-foreground"
+        >
+          Continuar curtindo
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function Avatar({ url, label, size, ring }: { url: string | null; label: string; size: "lg"; ring?: boolean }) {
+  const dim = "size-20";
+  return (
+    <div
+      className={`${dim} overflow-hidden rounded-full ${ring ? "ring-4 ring-primary" : "ring-2 ring-background"} bg-surface-2`}
+    >
+      {url ? (
+        <img src={url} alt={label} className="size-full object-cover" />
+      ) : (
+        <div className="size-full bg-gradient-to-br from-surface-2 to-surface flex items-center justify-center text-2xl font-extrabold text-foreground/40">
+          {label.charAt(0).toUpperCase()}
+        </div>
+      )}
+    </div>
+  );
+}
 function CardShell({
   profile,
   className = "",

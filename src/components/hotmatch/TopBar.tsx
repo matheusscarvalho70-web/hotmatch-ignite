@@ -1,6 +1,6 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Bell, CheckCheck, Coins, Crown, Heart, MessageCircle, Sparkles, X, Zap } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Component, useEffect, useState, type ReactNode } from "react";
 import { HotMark } from "@/components/hotmatch/HotMark";
 import { useNotifications } from "@/hooks/use-notifications";
 import { useAppState } from "@/lib/hotmatch/store";
@@ -189,8 +189,8 @@ function NotificationsDrawer({ onClose }: { onClose: () => void }) {
                 >
                   <NotifIcon emoji="💬" />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold">{n.title}</p>
-                    <p className="truncate text-xs text-muted-foreground">{n.content}</p>
+                    <p className="truncate text-sm font-semibold">{n.title ?? "Mensagem"}</p>
+                    <p className="truncate text-xs text-muted-foreground">{n.content ?? ""}</p>
                   </div>
                   {!n.is_read && <span className="size-2 shrink-0 rounded-full bg-primary" />}
                 </button>
@@ -204,8 +204,8 @@ function NotificationsDrawer({ onClose }: { onClose: () => void }) {
                 <div key={n.id} className="flex items-center gap-3 py-3">
                   <NotifIcon emoji="🔥" />
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold">{n.title}</p>
-                    <p className="text-xs text-muted-foreground">{n.content}</p>
+                    <p className="text-sm font-semibold">{n.title ?? "Deu Match!"}</p>
+                    <p className="text-xs text-muted-foreground">{n.content ?? ""}</p>
                   </div>
                   {!n.is_read && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">Novo</span>}
                 </div>
@@ -219,8 +219,8 @@ function NotificationsDrawer({ onClose }: { onClose: () => void }) {
                 <div key={n.id} className="flex items-center gap-3 py-3">
                   <NotifIcon emoji="❤️" />
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold">{n.title}</p>
-                    <p className="text-xs text-muted-foreground">{n.content}</p>
+                    <p className="text-sm font-semibold">{n.title ?? "Nova curtida"}</p>
+                    <p className="text-xs text-muted-foreground">{n.content ?? ""}</p>
                   </div>
                 </div>
               ))}
@@ -233,8 +233,8 @@ function NotificationsDrawer({ onClose }: { onClose: () => void }) {
                 <div key={n.id} className="flex items-center gap-3 py-3">
                   <NotifIcon emoji="🔔" />
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold">{n.title}</p>
-                    <p className="text-xs text-muted-foreground">{n.content}</p>
+                    <p className="text-sm font-semibold">{n.title ?? "Atividade"}</p>
+                    <p className="text-xs text-muted-foreground">{n.content ?? ""}</p>
                   </div>
                   {!n.is_read && <span className="size-2 shrink-0 rounded-full bg-primary" />}
                 </div>
@@ -290,6 +290,52 @@ function Section({
 }
 
 /* ------------------------------------------------------------------ */
+/*  Error Boundary — wraps NotificationsDrawer so a crash there never  */
+/*  propagates to the root error page.                                 */
+/* ------------------------------------------------------------------ */
+class NotifErrorBoundary extends Component<
+  { children: ReactNode; onClose: () => void },
+  { hasError: boolean }
+> {
+  constructor(props: { children: ReactNode; onClose: () => void }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() { return { hasError: true }; }
+  componentDidCatch(err: unknown) { console.warn("[NotifBoundary]", err); }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <>
+          <div className="fixed inset-0 z-[55]" onClick={this.props.onClose} />
+          <div
+            className="fixed inset-x-0 top-0 z-[56] mx-auto max-w-[30rem] overflow-y-auto rounded-b-3xl border-b border-x border-border bg-background shadow-[0_8px_32px_rgba(0,0,0,0.45)]"
+            style={{ maxHeight: "80dvh", paddingTop: "calc(env(safe-area-inset-top) + 4rem)" }}
+          >
+            <div className="p-4 pb-6">
+              <div className="flex items-center justify-between">
+                <h3 className="text-base font-extrabold">Notificações</h3>
+                <button onClick={this.props.onClose} className="grid size-7 place-items-center rounded-full bg-surface-2">
+                  <X className="size-4 text-muted-foreground" />
+                </button>
+              </div>
+              <div className="flex flex-col items-center gap-3 py-12 text-center">
+                <span className="grid size-14 place-items-center rounded-full bg-surface-2">
+                  <Bell className="size-6 text-muted-foreground" />
+                </span>
+                <p className="text-sm font-semibold">Nenhuma notificação no momento</p>
+                <p className="text-xs text-muted-foreground">Volte mais tarde para ver suas atualizações.</p>
+              </div>
+            </div>
+          </div>
+        </>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /*  Notification Bell                                                   */
 /* ------------------------------------------------------------------ */
 function NotificationBell() {
@@ -314,7 +360,11 @@ function NotificationBell() {
           </span>
         )}
       </button>
-      {open && <NotificationsDrawer onClose={() => setOpen(false)} />}
+      {open && (
+        <NotifErrorBoundary onClose={() => setOpen(false)}>
+          <NotificationsDrawer onClose={() => setOpen(false)} />
+        </NotifErrorBoundary>
+      )}
     </>
   );
 }

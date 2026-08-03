@@ -29,17 +29,35 @@ export function useMatches() {
   return { matches, loading };
 }
 
+// Best-effort push via the notify-user edge function.
+// Never throws — push is informational and must not block the match flow.
+async function sendPushNotification(playerId: string, title: string, message: string) {
+  try {
+    const url = `${import.meta.env.VITE_SUPABASE_URL as string}/functions/v1/notify-user`;
+    await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY as string}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ player_id: playerId, title, message }),
+    });
+  } catch {
+    // Intentionally swallowed — push is best-effort
+  }
+}
+
 /**
- * Record a swipe decision and, for likes, run the mutual-match flow:
+ * Record a swipe decision and, for likes, run the full mutual-match flow:
  *
  * 1. Upsert into `matches`         — keeps the feed exclusion list up to date.
  * 2. Upsert into `likes`           — one-directional like ledger.
  * 3. Query `likes` for the reverse — did the target already like this user?
- * 4. If yes: upsert into `mutual_matches` (canonical ordered pair) and return
- *    mutualMatch: true so the caller can show the match alert.
+ * 4. Upsert into `mutual_matches`  — canonical ordered pair (user1_id < user2_id).
+ * 5. Insert notifications for both users + fire OneSignal push to both.
  *
- * UUIDs are sorted lexicographically before every mutual_matches write/read so
- * (A→B) and (B→A) always map to the same single row.
+ * Steps 4–5 are the only ones that trigger on a mutual match.
+ * Steps 1–3 run on every like.
  */
 export async function recordMatch(
   userId: string,
@@ -47,15 +65,13 @@ export async function recordMatch(
   action: "like" | "pass",
 ): Promise<{ error: string | null; mutualMatch: boolean }> {
 
-  // Always record the swipe in the legacy matches table so the feed keeps
-  // excluding already-seen profiles.
+  // Always record the swipe so the feed excludes already-seen profiles.
   const { error: swipeError } = await supabase.from("matches").upsert(
     { user_id: userId, target_user_id: targetUserId, action },
     { onConflict: "user_id,target_user_id" },
   );
   if (swipeError) return { error: swipeError.message, mutualMatch: false };
 
-  // Passes do not need mutual-match processing.
   if (action !== "like") return { error: null, mutualMatch: false };
 
   // Step 2 — record the like in the dedicated likes table.
@@ -75,14 +91,55 @@ export async function recordMatch(
 
   if (!reverseLike) return { error: null, mutualMatch: false };
 
-  // Step 4 — mutual match confirmed. Write a canonical ordered pair so there
-  // is exactly one row per couple regardless of who liked first.
+  // Step 4 — mutual match confirmed.
+  // Store a canonical ordered pair (user1_id always < user2_id lexicographically)
+  // so there is exactly one row per couple regardless of who liked first.
   const [u1, u2] = [userId, targetUserId].sort();
   const { error: matchError } = await supabase.from("mutual_matches").upsert(
     { user1_id: u1, user2_id: u2 },
     { onConflict: "user1_id,user2_id" },
   );
   if (matchError) return { error: matchError.message, mutualMatch: false };
+
+  // Step 5 — notifications + push for both users (best-effort, fire-and-forget).
+  supabase
+    .from("profiles")
+    .select("id, name, onesignal_player_id")
+    .in("id", [userId, targetUserId])
+    .then(({ data: profs }) => {
+      const me = profs?.find((p) => p.id === userId);
+      const them = profs?.find((p) => p.id === targetUserId);
+
+      const meContent = them?.name
+        ? `Você e ${them.name} se curtiram! Comece a conversar agora.`
+        : "Vocês se curtiram! Comece a conversar agora.";
+      const themContent = me?.name
+        ? `Você e ${me.name} se curtiram! Comece a conversar agora.`
+        : "Vocês se curtiram! Comece a conversar agora.";
+
+      // Insert in-app notifications for both users
+      supabase.from("notifications").insert([
+        { user_id: userId, type: "match", title: "Deu Match! 🔥", content: meContent, is_read: false },
+        { user_id: targetUserId, type: "match", title: "Deu Match! 🔥", content: themContent, is_read: false },
+      ]).then(() => {});
+
+      // Fire OneSignal push to each user who has a registered player ID
+      if ((me as { onesignal_player_id?: string | null } | undefined)?.onesignal_player_id) {
+        sendPushNotification(
+          (me as { onesignal_player_id: string }).onesignal_player_id,
+          "Deu Match! 🔥",
+          meContent,
+        );
+      }
+      if ((them as { onesignal_player_id?: string | null } | undefined)?.onesignal_player_id) {
+        sendPushNotification(
+          (them as { onesignal_player_id: string }).onesignal_player_id,
+          "Deu Match! 🔥",
+          themContent,
+        );
+      }
+    })
+    .catch(() => {});
 
   return { error: null, mutualMatch: true };
 }
