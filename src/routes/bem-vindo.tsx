@@ -393,141 +393,156 @@ function SignupFlow({ open, onOpenChange, gender }: {
   }
 
   /* Final account creation */
+  function extractErrorMessage(e: unknown): string {
+    if (!e) return "";
+    const obj = e as Record<string, unknown> & {
+      message?: string;
+      error_description?: string;
+      error?: { message?: string };
+    };
+    return (
+      obj?.message ||
+      obj?.error_description ||
+      obj?.error?.message ||
+      (typeof obj === "object" ? Object.values(obj as object).join(" ") : String(obj))
+    );
+  }
+
   async function finish() {
-    setSaving(true);
-    try {
-      /* 1 — Create Supabase Auth user */
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: email.trim().toLowerCase(),
-        password,
-        options: {
-          data: { name: name.trim() },
-        },
-      });
-
-      if (authError) {
-        throw new Error(
-          authError.message === "User already registered"
-            ? "Este e-mail já está cadastrado. Use 'Já tenho conta' para entrar."
-            : authError.message,
-        );
-      }
-
-      const userId = authData.user?.id;
-      if (!userId) throw new Error("Erro ao criar conta. Tente novamente.");
-
-      /* 2 — Upload avatar */
-      let avatarUrl: string | null = null;
-      if (avatarFile) {
-        const ext = avatarFile.name.split(".").pop() ?? "jpg";
-        const path = `avatars/${userId}_${Date.now()}.${ext}`;
-        const { data: sd } = await supabase.storage
-          .from("photos")
-          .upload(path, avatarFile, { upsert: true, contentType: avatarFile.type });
-        if (sd) {
-          const { data: { publicUrl } } = supabase.storage.from("photos").getPublicUrl(sd.path);
-          avatarUrl = publicUrl;
-        }
-      }
-
-      /* 3 — Upload biometric selfie (failure is non-fatal — account still gets created) */
-      let verificationPhotoUrl: string | null = null;
-      if (capturedBlob) {
-        try {
-          const path = `verifications/${userId}_${Date.now()}_selfie.jpg`;
-          const { data: vd, error: verErr } = await supabase.storage
-            .from("photos")
-            .upload(path, capturedBlob, { upsert: true, contentType: "image/jpeg" });
-          if (verErr) {
-            console.warn(
-              "[Signup] Biometric selfie upload failed:",
-              verErr.message || JSON.stringify(verErr),
-            );
-          } else if (vd) {
-            const { data: { publicUrl } } = supabase.storage.from("photos").getPublicUrl(vd.path);
-            verificationPhotoUrl = publicUrl;
-          }
-        } catch (uploadErr) {
-          console.warn("[Signup] Biometric selfie upload exception:", uploadErr);
-          // verificationPhotoUrl remains null — account creation continues normally
-        }
-      }
-
-      /* 4 — Insert profile linked to auth user */
-      const { data: profile, error: profileError } = await supabase
-        .from("profiles")
-        .insert({
-          id: userId,
-          gender,
-          name: name.trim(),
-          age: computedAge ?? 18,
-          bio: bio.trim(),
-          location: "Brasil",
-          avatar_url: avatarUrl,
-          coin_balance: 0,
-          earnings_brl: 0,
-          is_verified: false,
-          is_demo: false,
-          verification_status: verificationPhotoUrl ? "pending" : "unverified",
-          verification_photo_url: verificationPhotoUrl,
-        })
-        .select()
-        .single();
-
-      if (profileError || !profile) {
-        /* If profile insert fails, remove the auth user to avoid orphaned accounts */
-        await supabase.auth.signOut();
-        throw new Error(profileError?.message ?? "Erro ao salvar perfil. Tente novamente.");
-      }
-
-      /* 5 — Hydrate store */
-      actions.setProfile({
-        profileId: profile.id,
-        gender,
-        name: profile.name,
-        avatarUrl: profile.avatar_url,
-        coins: profile.coin_balance,
-        earnings: Number(profile.earnings_brl),
-        xp: profile.xp ?? 0,
-        level: profile.level ?? "bronze",
-        vip: false,
-      });
-
-      registerPush(profile.id).catch(() => {});
-
-      supabase.from("notifications").insert({
-        user_id: profile.id,
-        type: "match",
-        title: "Bem-vindo ao HotMatch! 🔥",
-        content: isCreator
-          ? "Seu perfil está sendo verificado. Em breve você poderá sacar seus ganhos!"
-          : "Explore o feed e converse com pessoas incríveis.",
-        is_read: false,
-      }).then(({ error: nErr }) => {
-        if (nErr) console.warn("[HotMatch] Notification insert failed:", nErr);
-      });
-
-      onOpenChange(false);
-      toast.success(`Bem-vindo ao HotMatch, ${profile.name}! 🔥`);
-      navigate({ to: "/" });
-    } catch (err) {
-      const error = err as Record<string, unknown> & {
-        message?: string;
-        error_description?: string;
-        error?: { message?: string };
-      };
-      console.dir(error);
-      console.log(JSON.stringify(error, Object.getOwnPropertyNames(error)));
-      const errorMessage =
-        error?.message ||
-        error?.error_description ||
-        error?.error?.message ||
-        (typeof error === "object" ? Object.values(error).join(" ") : String(error));
-      alert("Erro no cadastro: " + (errorMessage || "Verifique se o e-mail/telefone já não está cadastrado."));
-      toast.error(errorMessage || "Erro desconhecido ao criar conta.");
-    } finally {
-      setSaving(false);
+    /* Guard: local fields */
+    if (!name.trim() || !email.trim() || !password || !dob) {
+      alert("Por favor, preencha todos os campos obrigatórios.");
+      return;
     }
+
+    setSaving(true);
+
+    /* 1 — Create Supabase Auth user */
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email: email.trim().toLowerCase(),
+      password,
+      options: {
+        data: { full_name: name.trim(), name: name.trim() },
+      },
+    });
+
+    if (authError) {
+      console.dir(authError);
+      console.log(JSON.stringify(authError, Object.getOwnPropertyNames(authError)));
+      const msg = extractErrorMessage(authError);
+      alert("Erro no cadastro: " + (msg || "Verifique se o e-mail já não está cadastrado."));
+      toast.error(msg || "Erro ao criar conta.");
+      setSaving(false);
+      return;
+    }
+
+    const userId = authData?.user?.id;
+    if (!userId) {
+      alert("Por favor, preencha todos os campos obrigatórios.");
+      setSaving(false);
+      return;
+    }
+
+    /* 2 — Upload avatar */
+    let avatarUrl: string | null = null;
+    if (avatarFile) {
+      const ext = avatarFile.name.split(".").pop() ?? "jpg";
+      const path = `avatars/${userId}_${Date.now()}.${ext}`;
+      const { data: sd } = await supabase.storage
+        .from("photos")
+        .upload(path, avatarFile, { upsert: true, contentType: avatarFile.type });
+      if (sd) {
+        const { data: { publicUrl } } = supabase.storage.from("photos").getPublicUrl(sd.path);
+        avatarUrl = publicUrl;
+      }
+    }
+
+    /* 3 — Upload biometric selfie (failure is non-fatal — account still gets created) */
+    let verificationPhotoUrl: string | null = null;
+    if (capturedBlob) {
+      try {
+        const path = `verifications/${userId}_${Date.now()}_selfie.jpg`;
+        const { data: vd, error: verErr } = await supabase.storage
+          .from("photos")
+          .upload(path, capturedBlob, { upsert: true, contentType: "image/jpeg" });
+        if (verErr) {
+          console.warn(
+            "[Signup] Biometric selfie upload failed:",
+            verErr.message || JSON.stringify(verErr),
+          );
+        } else if (vd) {
+          const { data: { publicUrl } } = supabase.storage.from("photos").getPublicUrl(vd.path);
+          verificationPhotoUrl = publicUrl;
+        }
+      } catch (uploadErr) {
+        console.warn("[Signup] Biometric selfie upload exception:", uploadErr);
+        // verificationPhotoUrl remains null — account creation continues normally
+      }
+    }
+
+    /* 4 — Insert profile linked to auth user */
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .insert({
+        id: userId,
+        gender,
+        name: name.trim(),
+        age: computedAge ?? 18,
+        bio: bio.trim(),
+        location: "Brasil",
+        avatar_url: avatarUrl,
+        coin_balance: 0,
+        earnings_brl: 0,
+        is_verified: false,
+        is_demo: false,
+        verification_status: verificationPhotoUrl ? "pending" : "unverified",
+        verification_photo_url: verificationPhotoUrl,
+      })
+      .select()
+      .single();
+
+    if (profileError || !profile) {
+      console.dir(profileError);
+      console.log(JSON.stringify(profileError, Object.getOwnPropertyNames(profileError ?? {})));
+      const msg = extractErrorMessage(profileError) || "Erro ao salvar perfil. Tente novamente.";
+      alert("Erro no cadastro: " + msg);
+      toast.error(msg);
+      await supabase.auth.signOut();
+      setSaving(false);
+      return;
+    }
+
+    /* 5 — Hydrate store */
+    actions.setProfile({
+      profileId: profile.id,
+      gender,
+      name: profile.name,
+      avatarUrl: profile.avatar_url,
+      coins: profile.coin_balance,
+      earnings: Number(profile.earnings_brl),
+      xp: profile.xp ?? 0,
+      level: profile.level ?? "bronze",
+      vip: false,
+    });
+
+    registerPush(profile.id).catch(() => {});
+
+    supabase.from("notifications").insert({
+      user_id: profile.id,
+      type: "match",
+      title: "Bem-vindo ao HotMatch! 🔥",
+      content: isCreator
+        ? "Seu perfil está sendo verificado. Em breve você poderá sacar seus ganhos!"
+        : "Explore o feed e converse com pessoas incríveis.",
+      is_read: false,
+    }).then(({ error: nErr }) => {
+      if (nErr) console.warn("[HotMatch] Notification insert failed:", nErr);
+    });
+
+    setSaving(false);
+    onOpenChange(false);
+    toast.success(`Bem-vindo ao HotMatch, ${profile.name}! 🔥`);
+    navigate({ to: "/" });
   }
 
   /* Step validation */
