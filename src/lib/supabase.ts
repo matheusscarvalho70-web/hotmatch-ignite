@@ -89,6 +89,20 @@ export type DbMatch = {
   created_at: string;
 };
 
+export type DbLike = {
+  id: string;
+  user_id: string;
+  target_user_id: string;
+  created_at: string;
+};
+
+export type DbMutualMatch = {
+  id: string;
+  user1_id: string;
+  user2_id: string;
+  created_at: string;
+};
+
 export type DbTransaction = {
   id: string;
   user_id: string;

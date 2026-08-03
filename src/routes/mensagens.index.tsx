@@ -3,8 +3,8 @@ import { useEffect, useState } from "react";
 import { Crown, MessageCircle, Search } from "lucide-react";
 import { TopBar } from "@/components/hotmatch/TopBar";
 import { useProfiles } from "@/hooks/use-profiles";
+import { fetchMutualMatchIds } from "@/hooks/use-matches";
 import { useAppState } from "@/lib/hotmatch/store";
-import { supabase } from "@/lib/supabase";
 
 export const Route = createFileRoute("/mensagens/")({
   head: () => ({
@@ -20,22 +20,15 @@ function Messages() {
   const { profileId } = useAppState();
   const { profiles, loading } = useProfiles();
 
-  // Compute mutual match IDs: both sides must have a "like" row.
+  // Load confirmed mutual matches from the mutual_matches table.
   const [mutualIds, setMutualIds] = useState<Set<string>>(new Set());
   const [matchLoading, setMatchLoading] = useState(true);
 
   useEffect(() => {
     if (!profileId) { setMatchLoading(false); return; }
     let cancelled = false;
-    Promise.all([
-      supabase.from("matches").select("target_user_id").eq("user_id", profileId).eq("action", "like"),
-      supabase.from("matches").select("user_id").eq("target_user_id", profileId).eq("action", "like"),
-    ]).then(([myLikes, theirLikes]) => {
-      if (cancelled) return;
-      const iLiked = new Set((myLikes.data ?? []).map((r) => (r as { target_user_id: string }).target_user_id));
-      const theyLiked = new Set((theirLikes.data ?? []).map((r) => (r as { user_id: string }).user_id));
-      setMutualIds(new Set([...iLiked].filter((id) => theyLiked.has(id))));
-      setMatchLoading(false);
+    fetchMutualMatchIds(profileId).then((ids) => {
+      if (!cancelled) { setMutualIds(ids); setMatchLoading(false); }
     });
     return () => { cancelled = true; };
   }, [profileId]);

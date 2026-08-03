@@ -52,20 +52,24 @@ function Chat() {
   const partnerName = dbPartner?.name ?? "Conversa";
   const partnerAvatar = dbPartner?.avatar_url ?? null;
 
-  // Block chat until mutual match is confirmed (both sides have a "like" row).
-  // Demo partners skip this check so the demo flow always works.
+  // Block chat until a confirmed mutual_matches row exists for this pair.
+  // Always use the sorted (u1, u2) pair — same order used at insert time.
   const [hasMutualMatch, setHasMutualMatch] = useState<boolean | null>(null);
   useEffect(() => {
     if (!myId || !partnerId) return;
     if (dbPartner === undefined) return; // wait for profiles to load
     if (dbPartner?.is_demo) { setHasMutualMatch(true); return; }
     let cancelled = false;
-    Promise.all([
-      supabase.from("matches").select("id").eq("user_id", myId).eq("target_user_id", partnerId).eq("action", "like").maybeSingle(),
-      supabase.from("matches").select("id").eq("user_id", partnerId).eq("target_user_id", myId).eq("action", "like").maybeSingle(),
-    ]).then(([iLiked, theyLiked]) => {
-      if (!cancelled) setHasMutualMatch(!!iLiked.data && !!theyLiked.data);
-    });
+    const [u1, u2] = [myId, partnerId].sort();
+    supabase
+      .from("mutual_matches")
+      .select("id")
+      .eq("user1_id", u1)
+      .eq("user2_id", u2)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!cancelled) setHasMutualMatch(!!data);
+      });
     return () => { cancelled = true; };
   }, [myId, partnerId, dbPartner]);
 
