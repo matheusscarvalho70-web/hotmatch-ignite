@@ -511,10 +511,10 @@ function SignupFlow({ open, onOpenChange, gender }: {
       toast.success(`Bem-vindo ao HotMatch, ${profile.name}! 🔥`);
       navigate({ to: "/" });
     } catch (err) {
-      const msg =
-        err instanceof Error
-          ? err.message
-          : (err as Record<string, string>)?.message || JSON.stringify(err);
+      const error = err as Record<string, unknown> & { message?: string };
+      const msg = error?.message || JSON.stringify(error, null, 2);
+      console.error("[Signup] catch:", msg, err);
+      alert(error?.message || JSON.stringify(error, null, 2));
       toast.error(msg || "Erro desconhecido ao criar conta.");
     } finally {
       setSaving(false);
