@@ -385,4 +385,4 @@ function GallerySlot({ src, onPick, onRemove }: {
       <input ref={inputRef} type="file" accept="image/*,video/*" className="hidden" onChange={onPick} />
     </div>
   );
-}
+      }
