@@ -1,227 +1,388 @@
-import React, { useState, useEffect } from 'react';
-import { X, Upload, Trash2, Camera, Lock } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
+import { useEffect, useRef, useState } from "react";
+import { Camera, Plus, Save, X } from "lucide-react";
+import { toast } from "sonner";
+import { actions, useAppState } from "@/lib/hotmatch/store";
+import { supabase, type DbProfile, type DbUserPhoto } from "@/lib/supabase";
 
-interface EditProfileModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  user: any;
-  onProfileUpdate: () => void;
+/* ── Slot represents one gallery cell: empty, from DB, or a new local file ── */
+type SlotState =
+  | { kind: "empty" }
+  | { kind: "existing"; id: string; url: string }
+  | { kind: "new"; file: File; preview: string };
+
+function buildSlots(photos: DbUserPhoto[], count: number): SlotState[] {
+  const slots: SlotState[] = Array.from({ length: count }, () => ({ kind: "empty" }));
+  photos.slice(0, count).forEach((p, i) => {
+    slots[i] = { kind: "existing", id: p.id, url: p.photo_url };
+  });
+  return slots;
 }
 
-export const EditProfileModal: React.FC<EditProfileModalProps> = ({
-  isOpen,
+function slotSrc(s: SlotState): string | null {
+  if (s.kind === "existing") return s.url;
+  if (s.kind === "new") return s.preview;
+  return null;
+}
+
+async function uploadFile(bucket: string, file: File, path: string): Promise<string | null> {
+  const { data, error } = await supabase.storage
+    .from(bucket)
+    .upload(path, file, { upsert: true, contentType: file.type });
+  if (error) { console.error("[Upload] Failed:", error.message); return null; }
+  const { data: { publicUrl } } = supabase.storage.from(bucket).getPublicUrl(data.path);
+  return publicUrl;
+}
+
+type Props = {
+  open: boolean;
+  onClose: () => void;
+  onSaved?: () => void;
+  profile?: DbProfile | null;
+  publicPhotos?: DbUserPhoto[];
+  vipPhotos?: DbUserPhoto[];
+};
+
+export function EditProfileModal({
+  open,
   onClose,
-  user,
-  onProfileUpdate,
-}) => {
-  const [loading, setLoading] = useState(false);
-  const [bio, setBio] = useState(user?.bio || '');
-  const [publicPhotos, setPublicPhotos] = useState<string[]>(user?.photos || []);
-  const [vipPhotos, setVipPhotos] = useState<string[]>(user?.vip_photos || []);
-  const [uploading, setUploading] = useState(false);
+  onSaved,
+  profile,
+  publicPhotos: publicPhotosProp = [],
+  vipPhotos: vipPhotosProp = [],
+}: Props) {
+  const { gender, profileId, name: storeName, avatarUrl: storeAvatar, coins, earnings } = useAppState();
+  const isCreator = gender === "female";
 
+  const [name, setName] = useState(storeName || "");
+  const [age, setAge] = useState("");
+  const [bio, setBio] = useState("");
+  const [location, setLocation] = useState("");
+
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(storeAvatar);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+
+  const [publicSlots, setPublicSlots] = useState<SlotState[]>(buildSlots([], 3));
+  const [vipSlots, setVipSlots] = useState<SlotState[]>(buildSlots([], 6));
+  const [deletedPhotoIds, setDeletedPhotoIds] = useState<string[]>([]);
+
+  const [saving, setSaving] = useState(false);
+
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+
+  /* Pre-populate fields from DB profile + photos whenever the modal opens */
   useEffect(() => {
-    if (user) {
-      setBio(user.bio || '');
-      setPublicPhotos(user.photos || []);
-      setVipPhotos(user.vip_photos || []);
-    }
-  }, [user]);
+    if (!open) return;
+    setName(profile?.name ?? storeName ?? "");
+    setAge(profile?.age != null ? String(profile.age) : "");
+    setBio(profile?.bio ?? "");
+    setLocation(profile?.location ?? "");
+    setAvatarPreview(profile?.avatar_url ?? storeAvatar ?? null);
+    setAvatarFile(null);
+    setPublicSlots(buildSlots(publicPhotosProp, 3));
+    setVipSlots(buildSlots(vipPhotosProp, 6));
+    setDeletedPhotoIds([]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
-  if (!isOpen) return null;
+  function onAvatarPick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setAvatarFile(file);
+    setAvatarPreview(URL.createObjectURL(file));
+  }
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, isVip: boolean) => {
-    try {
-      setUploading(true);
-      const files = e.target.files;
-      if (!files || files.length === 0) return;
-
-      const newUrls: string[] = [];
-
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        const fileExt = file.name.split('.').pop();
-        const fileName = `${user.id}/${Math.random()}.${fileExt}`;
-        const bucket = isVip ? 'vip-photos' : 'user-photos';
-        
-
-        const { error: uploadError } = await supabase.storage
-          .from(bucket)
-          .upload(fileName, file, { upsert: true });
-
-        if (uploadError) throw uploadError;
-
-        const { data: { publicUrl } } = supabase.storage
-          .from(bucket)
-          .getPublicUrl(fileName);
-
-        newUrls.push(publicUrl);
-      }
-
-      if (isVip) {
-        setVipPhotos(prev => [...prev, ...newUrls]);
-      } else {
-        setPublicPhotos(prev => [...prev, ...newUrls]);
-      }
-    } catch (error: any) {
-      alert('Erro ao fazer upload da imagem: ' + error.message);
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const removePhoto = (index: number, isVip: boolean) => {
-    if (isVip) {
-      setVipPhotos(prev => prev.filter((_, i) => i !== index));
+  function handleGalleryPick(
+    e: React.ChangeEvent<HTMLInputElement>,
+    index: number,
+    kind: "public" | "vip",
+  ) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const newSlot: SlotState = { kind: "new", file, preview: URL.createObjectURL(file) };
+    if (kind === "public") {
+      setPublicSlots((prev) => prev.map((s, i) => (i === index ? newSlot : s)));
     } else {
-      setPublicPhotos(prev => prev.filter((_, i) => i !== index));
+      setVipSlots((prev) => prev.map((s, i) => (i === index ? newSlot : s)));
     }
-  };
+    // reset the input so the same file can be re-selected if needed
+    e.target.value = "";
+  }
 
-  const handleSave = async () => {
+  function handleGalleryRemove(index: number, kind: "public" | "vip") {
+    const slots = kind === "public" ? publicSlots : vipSlots;
+    const slot = slots[index];
+    if (slot.kind === "existing") {
+      setDeletedPhotoIds((ids) => [...ids, slot.id]);
+    }
+    const empty: SlotState = { kind: "empty" };
+    if (kind === "public") {
+      setPublicSlots((prev) => prev.map((s, i) => (i === index ? empty : s)));
+    } else {
+      setVipSlots((prev) => prev.map((s, i) => (i === index ? empty : s)));
+    }
+  }
+
+  async function save() {
+    if (!profileId) { toast.error("Faça login para editar o perfil."); return; }
+    setSaving(true);
+
     try {
-      setLoading(true);
+      /* 1 — Upload avatar to dedicated 'avatars' bucket if a new file was selected */
+      let newAvatarUrl: string | null = null;
+      if (avatarFile) {
+        const ext = avatarFile.name.split(".").pop() ?? "jpg";
+        newAvatarUrl = await uploadFile(
+          "avatars",
+          avatarFile,
+          `${profileId}/avatar_${Date.now()}.${ext}`,
+        );
+      }
+      const finalAvatarUrl = newAvatarUrl ?? profile?.avatar_url ?? storeAvatar;
 
-      const { error } = await supabase
-        .from('profiles')
-        .update({
-          bio,
-          photos: publicPhotos,
-          vip_photos: vipPhotos,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', user.id);
+      /* 2 — Build and apply profiles UPDATE */
+      const updatePayload: Record<string, unknown> = {};
+      if (name.trim()) updatePayload.name = name.trim();
+      if (age.trim() && !isNaN(Number(age))) updatePayload.age = Number(age);
+      if (bio.trim()) updatePayload.bio = bio.trim();
+      if (location.trim()) updatePayload.location = location.trim();
+      if (newAvatarUrl) updatePayload.avatar_url = newAvatarUrl;
 
-      if (error) throw error;
+      if (Object.keys(updatePayload).length > 0) {
+        const { error } = await supabase
+          .from("profiles")
+          .update(updatePayload)
+          .eq("id", profileId);
+        if (error) throw new Error(error.message);
+      }
 
-      onProfileUpdate();
+      /* 3 — Delete removed photos from user_photos table */
+      if (deletedPhotoIds.length > 0) {
+        const { error } = await supabase
+          .from("user_photos")
+          .delete()
+          .in("id", deletedPhotoIds);
+        if (error) console.error("[Delete photos] Failed:", error.message);
+      }
+
+      /* 4 — Upload new gallery photos to 'user_photos' bucket and insert DB rows */
+      const newPublicUploads = publicSlots
+        .filter((s): s is Extract<SlotState, { kind: "new" }> => s.kind === "new")
+        .map(async ({ file }, i) => {
+          const ext = file.name.split(".").pop() ?? "jpg";
+          const url = await uploadFile(
+            "user_photos",
+            file,
+            `${profileId}/public_${Date.now()}_${i}.${ext}`,
+          );
+          if (url) {
+            await supabase.from("user_photos").insert({
+              user_id: profileId,
+              photo_url: url,
+              is_vip: false,
+              coin_price: 0,
+              sort_order: i,
+            });
+          }
+        });
+
+      const newVipUploads = isCreator
+        ? vipSlots
+            .filter((s): s is Extract<SlotState, { kind: "new" }> => s.kind === "new")
+            .map(async ({ file }, i) => {
+              const ext = file.name.split(".").pop() ?? "jpg";
+              const url = await uploadFile(
+                "user_photos",
+                file,
+                `${profileId}/vip_${Date.now()}_${i}.${ext}`,
+              );
+              if (url) {
+                await supabase.from("user_photos").insert({
+                  user_id: profileId,
+                  photo_url: url,
+                  is_vip: true,
+                  coin_price: 60,
+                  sort_order: i,
+                });
+              }
+            })
+        : [];
+
+      await Promise.all([...newPublicUploads, ...newVipUploads]);
+
+      /* 5 — Sync store and notify parent */
+      actions.setProfile({
+        profileId,
+        gender,
+        name: (updatePayload.name as string | undefined) ?? storeName,
+        avatarUrl: finalAvatarUrl ?? storeAvatar,
+        coins,
+        earnings,
+      });
+
+      toast.success("Perfil atualizado! ✨");
+      onSaved?.();
       onClose();
-    } catch (error: any) {
-      alert('Erro ao salvar perfil: ' + error.message);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao salvar.");
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
-  };
+  }
+
+  if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm overflow-y-auto">
-      <div className="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-lg p-6 my-8 text-white relative">
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 text-gray-400 hover:text-white p-1 rounded-full hover:bg-gray-800"
-        >
-          <X size={20} />
-        </button>
+    <div
+      className="fixed inset-0 z-[70] flex items-end justify-center bg-black/70 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-[30rem] overflow-y-auto rounded-t-3xl border-t border-border bg-background"
+        style={{ maxHeight: "92dvh" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex justify-center pt-3">
+          <div className="h-1 w-10 rounded-full bg-border" />
+        </div>
 
-        <h2 className="text-xl font-bold mb-6 text-center">Editar Perfil</h2>
+        <div className="flex items-center justify-between px-5 py-4">
+          <h2 className="text-lg font-extrabold">Editar Perfil</h2>
+          <button onClick={onClose} className="grid size-8 place-items-center rounded-full bg-surface-2">
+            <X className="size-4 text-muted-foreground" />
+          </button>
+        </div>
 
-        <div className="space-y-6">
-          {/* Bio */}
-          <div>
-            <label className="block text-sm font-medium text-gray-400 mb-2">Sobre você (Bio)</label>
-            <textarea
-              value={bio}
-              onChange={(e) => setBio(e.target.value)}
-              rows={3}
-              className="w-full bg-gray-800 border border-gray-700 rounded-xl p-3 text-white focus:ring-2 focus:ring-rose-500 focus:outline-none"
-              placeholder="Escreva algo interessante sobre você..."
-            />
+        <div className="space-y-6 px-5 pb-10">
+          {/* Avatar */}
+          <div className="flex flex-col items-center gap-3">
+            <div className="relative">
+              <div className="ring-match grid size-24 place-items-center rounded-full p-[3px] shadow-gold">
+                {avatarPreview ? (
+                  <img src={avatarPreview} alt="Avatar" className="size-full rounded-full object-cover" />
+                ) : (
+                  <div className="size-full rounded-full bg-surface-2" />
+                )}
+              </div>
+              <button
+                onClick={() => avatarInputRef.current?.click()}
+                className="tap-scale absolute -bottom-1 -right-1 grid size-7 place-items-center rounded-full bg-gradient-hot shadow-hot"
+              >
+                <Camera className="size-3.5 text-white" />
+              </button>
+              <input ref={avatarInputRef} type="file" accept="image/*" className="hidden" onChange={onAvatarPick} />
+            </div>
+            <p className="text-xs text-muted-foreground">Selecione da galeria ou tire uma foto</p>
           </div>
 
-          {/* Fotos Públicas */}
-          <div>
-            <div className="flex justify-between items-center mb-2">
-              <label className="text-sm font-medium text-gray-300 flex items-center gap-2">
-                <Camera size={16} className="text-rose-500" /> Galeria Pública
-              </label>
-              <span className="text-xs text-gray-500">{publicPhotos.length} fotos</span>
+          {/* Text fields */}
+          <div className="space-y-4">
+            <Field label="Nome" value={name} onChange={setName} placeholder={storeName || "Seu nome"} />
+            <Field label="Idade" value={age} onChange={setAge} type="number" placeholder="Ex: 25" />
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-muted-foreground">Bio</label>
+              <textarea
+                value={bio}
+                onChange={(e) => setBio(e.target.value)}
+                rows={3}
+                placeholder="Conte algo sobre você..."
+                className="w-full resize-none rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-foreground outline-none focus:border-primary placeholder:text-muted-foreground/60"
+              />
             </div>
-            
-            <div className="grid grid-cols-3 gap-3 mb-3">
-              {publicPhotos.map((url, idx) => (
-                <div key={idx} className="relative aspect-square rounded-xl overflow-hidden group border border-gray-800">
-                  <img src={url} alt="Pública" className="w-full h-full object-cover" />
-                  <button
-                    onClick={() => removePhoto(idx, false)}
-                    className="absolute top-1 right-1 bg-red-600/80 p-1 rounded-full text-white opacity-90 hover:opacity-100"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              ))}
-              
-              <label className="aspect-square rounded-xl border-2 border-dashed border-gray-700 hover:border-rose-500 flex flex-col items-center justify-center cursor-pointer bg-gray-800/50">
-                <Upload size={20} className="text-gray-400 mb-1" />
-                <span className="text-xs text-gray-400">Adicionar</span>
-                <input
-                  type="file"
-                  multiple
-                  accept="image/*"
-                  onChange={(e) => handleFileUpload(e, false)}
-                  className="hidden"
-                  disabled={uploading}
+            <Field label="Localização" value={location} onChange={setLocation} placeholder="Ex: São Paulo, SP" />
+          </div>
+
+          {/* Public gallery */}
+          <div>
+            <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+              Galeria Pública · 3 fotos
+            </p>
+            <div className="grid grid-cols-3 gap-2">
+              {publicSlots.map((slot, i) => (
+                <GallerySlot
+                  key={i}
+                  src={slotSrc(slot)}
+                  onPick={(e) => handleGalleryPick(e, i, "public")}
+                  onRemove={() => handleGalleryRemove(i, "public")}
                 />
-              </label>
-            </div>
-          </div>
-
-          {/* Fotos VIP */}
-          <div>
-            <div className="flex justify-between items-center mb-2">
-              <label className="text-sm font-medium text-amber-400 flex items-center gap-2">
-                <Lock size={16} className="text-amber-400" /> Galeria VIP (Bloqueada)
-              </label>
-              <span className="text-xs text-amber-500/70">{vipPhotos.length} fotos VIP</span>
-            </div>
-            
-            <div className="grid grid-cols-3 gap-3 mb-3">
-              {vipPhotos.map((url, idx) => (
-                <div key={idx} className="relative aspect-square rounded-xl overflow-hidden group border border-amber-500/30">
-                  <img src={url} alt="VIP" className="w-full h-full object-cover" />
-                  <button
-                    onClick={() => removePhoto(idx, true)}
-                    className="absolute top-1 right-1 bg-red-600/80 p-1 rounded-full text-white opacity-90 hover:opacity-100"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
               ))}
-              
-              <label className="aspect-square rounded-xl border-2 border-dashed border-amber-500/40 hover:border-amber-400 flex flex-col items-center justify-center cursor-pointer bg-amber-500/5">
-                <Upload size={20} className="text-amber-400 mb-1" />
-                <span className="text-xs text-amber-400">Add VIP</span>
-                <input
-                  type="file"
-                  multiple
-                  accept="image/*"
-                  onChange={(e) => handleFileUpload(e, true)}
-                  className="hidden"
-                  disabled={uploading}
-                />
-              </label>
             </div>
           </div>
 
-          {/* Botões de Ação */}
-          <div className="flex gap-3 pt-4">
-            <button
-              onClick={onClose}
-              className="flex-1 py-3 px-4 rounded-xl border border-gray-700 text-gray-300 font-medium hover:bg-gray-800"
-            >
-              Cancelar
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={loading || uploading}
-              className="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-rose-500 to-amber-500 text-white font-bold hover:opacity-90 disabled:opacity-50"
-            >
-              {loading ? 'Salvando...' : 'Salvar Alterações'}
-            </button>
-          </div>
+          {/* VIP gallery (creators only) */}
+          {isCreator && (
+            <div>
+              <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                Galeria VIP 🔒 · 6 slots
+              </p>
+              <div className="grid grid-cols-3 gap-2">
+                {vipSlots.map((slot, i) => (
+                  <GallerySlot
+                    key={i}
+                    src={slotSrc(slot)}
+                    onPick={(e) => handleGalleryPick(e, i, "vip")}
+                    onRemove={() => handleGalleryRemove(i, "vip")}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          <button
+            onClick={save}
+            disabled={saving}
+            className="tap-scale flex w-full items-center justify-center gap-2 rounded-full bg-gradient-hot py-3.5 text-sm font-extrabold text-primary-foreground shadow-hot disabled:opacity-50"
+          >
+            <Save className="size-4" />
+            {saving ? "Salvando..." : "Salvar alterações"}
+          </button>
         </div>
       </div>
     </div>
   );
-};
-              
+}
+
+function Field({ label, value, onChange, type = "text", placeholder }: {
+  label: string; value: string; onChange: (v: string) => void; type?: string; placeholder?: string;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <label className="text-xs font-semibold text-muted-foreground">{label}</label>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-foreground outline-none focus:border-primary placeholder:text-muted-foreground/60"
+      />
+    </div>
+  );
+}
+
+function GallerySlot({ src, onPick, onRemove }: {
+  src: string | null;
+  onPick: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onRemove: () => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  return (
+    <div className="tap-scale relative aspect-square overflow-hidden rounded-xl border-2 border-dashed border-border bg-surface-2">
+      {src ? (
+        <>
+          <img src={src} alt="" className="size-full object-cover" />
+          <button onClick={onRemove} className="absolute right-1 top-1 grid size-5 place-items-center rounded-full bg-black/60">
+            <X className="size-3 text-white" />
+          </button>
+        </>
+      ) : (
+        <button
+          onClick={() => inputRef.current?.click()}
+          className="absolute inset-0 flex items-center justify-center text-muted-foreground/50"
+        >
+          <Plus className="size-6" />
+        </button>
+      )}
+      <input ref={inputRef} type="file" accept="image/*,video/*" className="hidden" onChange={onPick} />
+    </div>
+  );
+}
