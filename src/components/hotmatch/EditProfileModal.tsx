@@ -43,7 +43,8 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
         const file = files[i];
         const fileExt = file.name.split('.').pop();
         const fileName = `${user.id}/${Math.random()}.${fileExt}`;
-        const bucket = isVip ? 'vip-photos' : 'profile-photos';
+        const bucket = isVip ? 'vip-photos' : 'user-photos';
+        
 
         const { error: uploadError } = await supabase.storage
           .from(bucket)
