@@ -176,6 +176,14 @@ async function hydrateFromDb(userId: string) {
     level: data.level ?? "bronze",
     vip: data.is_verified ?? false,
   });
+  // Hydrate gallery unlocks from DB (fire-and-forget)
+  supabase
+    .from("vip_gallery_unlocks")
+    .select("creator_id")
+    .eq("visitor_id", data.id)
+    .then(({ data: unlocks }) => {
+      if (unlocks) actions.setGalleryUnlocks(unlocks.map((r) => (r as { creator_id: string }).creator_id));
+    });
   return true;
 }
 

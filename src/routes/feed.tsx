@@ -178,7 +178,7 @@ function PostCard({ post, liked, onLike }: { post: RichPost; liked: boolean; onL
   return (
     <article className="overflow-hidden rounded-3xl border border-border bg-surface shadow-card-premium">
       <header className="flex items-center gap-3 p-3">
-        <Link to="/mensagens/$chatId" params={{ chatId: post.author_id }}>
+        <Link to="/perfil" search={{ uid: post.author_id }}>
           <span className="ring-match grid size-11 shrink-0 place-items-center rounded-full p-[2px]">
             {post.author.avatar_url ? (
               <img src={post.author.avatar_url} alt={post.author.name} width={200} height={200} loading="lazy" className="size-full rounded-full object-cover" />
@@ -186,10 +186,10 @@ function PostCard({ post, liked, onLike }: { post: RichPost; liked: boolean; onL
           </span>
         </Link>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1">
+          <Link to="/perfil" search={{ uid: post.author_id }} className="flex items-center gap-1">
             <p className="truncate text-sm font-bold">{post.author.name}</p>
             {post.author.is_verified && <Crown className="size-3.5 shrink-0 text-gold" fill="currentColor" />}
-          </div>
+          </Link>
           <p className="text-xs text-muted-foreground">{relTime} · {post.media_type}</p>
         </div>
         <button

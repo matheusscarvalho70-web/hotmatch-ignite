@@ -22,6 +22,8 @@ export type DbProfile = {
   onesignal_player_id: string | null;
   latitude: number | null;
   longitude: number | null;
+  public_photos: string[] | null;
+  vip_photos: string[] | null;
   created_at: string;
 };
 

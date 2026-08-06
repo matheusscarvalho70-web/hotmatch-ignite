@@ -16,6 +16,7 @@ export type AppState = {
   unlocked: string[];
   vip: boolean;
   followed: string[];
+  galleryUnlocks: string[];
 };
 
 const STORAGE_KEY = "hm_session_v3";
@@ -62,6 +63,7 @@ const defaultState: AppState = {
   unlocked: [],
   vip: false,
   followed: [],
+  galleryUnlocks: [],
 };
 
 const persisted = loadFromStorage();
@@ -71,6 +73,7 @@ let state: AppState = {
   ...persisted,
   unlocked: [],
   followed: [],
+  galleryUnlocks: [],
 };
 
 const listeners = new Set<() => void>();
@@ -163,8 +166,24 @@ export const actions = {
     state = { ...state, followed: state.followed.filter((id) => id !== profileId) };
     emit();
   },
+  unlockGallery(creatorId: string, price: number): boolean {
+    if (state.galleryUnlocks.includes(creatorId)) return true;
+    if (state.coins < price) return false;
+    state = {
+      ...state,
+      coins: state.coins - price,
+      galleryUnlocks: [...state.galleryUnlocks, creatorId],
+    };
+    persist(state);
+    emit();
+    return true;
+  },
+  setGalleryUnlocks(ids: string[]) {
+    state = { ...state, galleryUnlocks: ids };
+    emit();
+  },
   signOut() {
-    state = { ...defaultState, unlocked: [], followed: [] };
+    state = { ...defaultState, unlocked: [], followed: [], galleryUnlocks: [] };
     try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
     emit();
   },

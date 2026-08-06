@@ -1,19 +1,19 @@
 import { useEffect, useRef, useState } from "react";
-import { Camera, Loader2, Plus, Save, X } from "lucide-react";
+import { Camera, Loader2, Lock, Plus, Save, X } from "lucide-react";
 import { toast } from "sonner";
 import { actions, useAppState } from "@/lib/hotmatch/store";
-import { supabase, type DbProfile, type DbUserPhoto } from "@/lib/supabase";
+import { supabase, type DbProfile } from "@/lib/supabase";
 
-/* ── Slot represents one gallery cell: empty, from DB, or a new local file ── */
+/* ── Slot represents one gallery cell: empty, existing (URL), or a new local file ── */
 type SlotState =
   | { kind: "empty" }
-  | { kind: "existing"; id: string; url: string }
+  | { kind: "existing"; url: string }
   | { kind: "new"; file: File; preview: string };
 
-function buildSlots(photos: DbUserPhoto[], count: number): SlotState[] {
+function buildSlots(urls: string[] | null | undefined, count: number): SlotState[] {
   const slots: SlotState[] = Array.from({ length: count }, () => ({ kind: "empty" }));
-  photos.slice(0, count).forEach((p, i) => {
-    slots[i] = { kind: "existing", id: p.id, url: p.photo_url };
+  (urls ?? []).slice(0, count).forEach((url, i) => {
+    slots[i] = { kind: "existing", url };
   });
   return slots;
 }
@@ -42,8 +42,6 @@ type Props = {
   onClose: () => void;
   onSaved?: () => void;
   profile?: DbProfile | null;
-  publicPhotos?: DbUserPhoto[];
-  vipPhotos?: DbUserPhoto[];
 };
 
 export function EditProfileModal({
@@ -51,8 +49,6 @@ export function EditProfileModal({
   onClose,
   onSaved,
   profile,
-  publicPhotos: publicPhotosProp = [],
-  vipPhotos: vipPhotosProp = [],
 }: Props) {
   const { gender, profileId, name: storeName, avatarUrl: storeAvatar, coins, earnings } = useAppState();
   const isCreator = gender === "female";
@@ -67,14 +63,13 @@ export function EditProfileModal({
 
   const [publicSlots, setPublicSlots] = useState<SlotState[]>(buildSlots([], 3));
   const [vipSlots, setVipSlots] = useState<SlotState[]>(buildSlots([], 6));
-  const [deletedPhotoIds, setDeletedPhotoIds] = useState<string[]>([]);
 
   const [saving, setSaving] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
-  /* Pre-populate fields from DB profile + photos whenever the modal opens */
+  /* Pre-populate fields from DB profile whenever the modal opens */
   useEffect(() => {
     if (!open) return;
     setName(profile?.name ?? storeName ?? "");
@@ -83,9 +78,8 @@ export function EditProfileModal({
     setLocation(profile?.location ?? "");
     setAvatarPreview(profile?.avatar_url ?? storeAvatar ?? null);
     setAvatarFile(null);
-    setPublicSlots(buildSlots(publicPhotosProp, 3));
-    setVipSlots(buildSlots(vipPhotosProp, 6));
-    setDeletedPhotoIds([]);
+    setPublicSlots(buildSlots(profile?.public_photos, 3));
+    setVipSlots(buildSlots(profile?.vip_photos, isCreator ? 6 : 0));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -109,16 +103,10 @@ export function EditProfileModal({
     } else {
       setVipSlots((prev) => prev.map((s, i) => (i === index ? newSlot : s)));
     }
-    // reset the input so the same file can be re-selected if needed
     e.target.value = "";
   }
 
   function handleGalleryRemove(index: number, kind: "public" | "vip") {
-    const slots = kind === "public" ? publicSlots : vipSlots;
-    const slot = slots[index];
-    if (slot.kind === "existing") {
-      setDeletedPhotoIds((ids) => [...ids, slot.id]);
-    }
     const empty: SlotState = { kind: "empty" };
     if (kind === "public") {
       setPublicSlots((prev) => prev.map((s, i) => (i === index ? empty : s)));
@@ -132,7 +120,7 @@ export function EditProfileModal({
     setSaving(true);
 
     try {
-      /* 1 — Upload avatar to dedicated 'avatars' bucket if a new file was selected */
+      /* 1 — Upload avatar to 'avatars' bucket if a new file was selected */
       let newAvatarUrl: string | null = null;
       if (avatarFile) {
         setUploadingAvatar(true);
@@ -147,77 +135,62 @@ export function EditProfileModal({
       }
       const finalAvatarUrl = newAvatarUrl ?? profile?.avatar_url ?? storeAvatar;
 
-      /* 2 — Build and apply profiles UPDATE */
-      const updatePayload: Record<string, unknown> = {};
+      /* 2 — Upload all new gallery photos to the correct buckets (await each) */
+      const publicBucket = "user_photos";
+      const vipBucket = "vip-photos";
+
+      const publicUrls: string[] = [];
+      for (let i = 0; i < publicSlots.length; i++) {
+        const slot = publicSlots[i];
+        if (slot.kind === "existing") {
+          publicUrls.push(slot.url);
+        } else if (slot.kind === "new") {
+          const ext = slot.file.name.split(".").pop() ?? "jpg";
+          const url = await uploadFile(
+            publicBucket,
+            slot.file,
+            `${profileId}/public_${Date.now()}_${i}.${ext}`,
+          );
+          if (url) publicUrls.push(url);
+        }
+      }
+
+      let vipUrls: string[] = [];
+      if (isCreator) {
+        for (let i = 0; i < vipSlots.length; i++) {
+          const slot = vipSlots[i];
+          if (slot.kind === "existing") {
+            vipUrls.push(slot.url);
+          } else if (slot.kind === "new") {
+            const ext = slot.file.name.split(".").pop() ?? "jpg";
+            const url = await uploadFile(
+              vipBucket,
+              slot.file,
+              `${profileId}/vip_${Date.now()}_${i}.${ext}`,
+            );
+            if (url) vipUrls.push(url);
+          }
+        }
+      }
+
+      /* 3 — Build and apply profiles UPDATE with photo arrays */
+      const updatePayload: Record<string, unknown> = {
+        public_photos: publicUrls,
+      };
+      if (isCreator) updatePayload.vip_photos = vipUrls;
       if (name.trim()) updatePayload.name = name.trim();
       if (age.trim() && !isNaN(Number(age))) updatePayload.age = Number(age);
       if (bio.trim()) updatePayload.bio = bio.trim();
       if (location.trim()) updatePayload.location = location.trim();
       if (newAvatarUrl) updatePayload.avatar_url = newAvatarUrl;
 
-      if (Object.keys(updatePayload).length > 0) {
-        const { error } = await supabase
-          .from("profiles")
-          .update(updatePayload)
-          .eq("id", profileId);
-        if (error) throw new Error(error.message);
-      }
+      const { error } = await supabase
+        .from("profiles")
+        .update(updatePayload)
+        .eq("id", profileId);
+      if (error) throw new Error(error.message);
 
-      /* 3 — Delete removed photos from user_photos table */
-      if (deletedPhotoIds.length > 0) {
-        const { error } = await supabase
-          .from("user_photos")
-          .delete()
-          .in("id", deletedPhotoIds);
-        if (error) console.error("[Delete photos] Failed:", error.message);
-      }
-
-      /* 4 — Upload new gallery photos to 'user_photos' bucket and insert DB rows */
-      const newPublicUploads = publicSlots
-        .filter((s): s is Extract<SlotState, { kind: "new" }> => s.kind === "new")
-        .map(async ({ file }, i) => {
-          const ext = file.name.split(".").pop() ?? "jpg";
-          const url = await uploadFile(
-            "user_photos",
-            file,
-            `${profileId}/public_${Date.now()}_${i}.${ext}`,
-          );
-          if (url) {
-            await supabase.from("user_photos").insert({
-              user_id: profileId,
-              photo_url: url,
-              is_vip: false,
-              coin_price: 0,
-              sort_order: i,
-            });
-          }
-        });
-
-      const newVipUploads = isCreator
-        ? vipSlots
-            .filter((s): s is Extract<SlotState, { kind: "new" }> => s.kind === "new")
-            .map(async ({ file }, i) => {
-              const ext = file.name.split(".").pop() ?? "jpg";
-              const url = await uploadFile(
-                "user_photos",
-                file,
-                `${profileId}/vip_${Date.now()}_${i}.${ext}`,
-              );
-              if (url) {
-                await supabase.from("user_photos").insert({
-                  user_id: profileId,
-                  photo_url: url,
-                  is_vip: true,
-                  coin_price: 60,
-                  sort_order: i,
-                });
-              }
-            })
-        : [];
-
-      await Promise.all([...newPublicUploads, ...newVipUploads]);
-
-      /* 5 — Sync store and notify parent */
+      /* 4 — Sync store and notify parent */
       actions.setProfile({
         profileId,
         gender,
@@ -302,7 +275,7 @@ export function EditProfileModal({
             <Field label="Localização" value={location} onChange={setLocation} placeholder="Ex: São Paulo, SP" />
           </div>
 
-          {/* Public gallery */}
+          {/* Public gallery (both genders) */}
           <div>
             <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
               Galeria Pública · 3 fotos
@@ -322,8 +295,8 @@ export function EditProfileModal({
           {/* VIP gallery (creators only) */}
           {isCreator && (
             <div>
-              <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                Galeria VIP 🔒 · 6 slots
+              <p className="mb-2 flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                Galeria VIP <Lock className="size-2.5 text-gold" /> · 6 slots
               </p>
               <div className="grid grid-cols-3 gap-2">
                 {vipSlots.map((slot, i) => (
@@ -332,6 +305,7 @@ export function EditProfileModal({
                     src={slotSrc(slot)}
                     onPick={(e) => handleGalleryPick(e, i, "vip")}
                     onRemove={() => handleGalleryRemove(i, "vip")}
+                    vip
                   />
                 ))}
               </div>
@@ -369,10 +343,11 @@ function Field({ label, value, onChange, type = "text", placeholder }: {
   );
 }
 
-function GallerySlot({ src, onPick, onRemove }: {
+function GallerySlot({ src, onPick, onRemove, vip }: {
   src: string | null;
   onPick: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onRemove: () => void;
+  vip?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -381,6 +356,11 @@ function GallerySlot({ src, onPick, onRemove }: {
       {src ? (
         <>
           <img src={src} alt="" className="size-full object-cover" />
+          {vip && (
+            <span className="absolute left-1 top-1 grid size-4 place-items-center rounded-full bg-black/60">
+              <Lock className="size-2.5 text-gold" />
+            </span>
+          )}
           <button onClick={onRemove} className="absolute right-1 top-1 grid size-5 place-items-center rounded-full bg-black/60">
             <X className="size-3 text-white" />
           </button>
@@ -393,7 +373,7 @@ function GallerySlot({ src, onPick, onRemove }: {
           <Plus className="size-6" />
         </button>
       )}
-      <input ref={inputRef} type="file" accept="image/*,video/*" className="hidden" onChange={onPick} />
+      <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={onPick} />
     </div>
   );
 }
