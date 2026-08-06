@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Camera, Plus, Save, X } from "lucide-react";
+import { Camera, Loader2, Plus, Save, X } from "lucide-react";
 import { toast } from "sonner";
 import { actions, useAppState } from "@/lib/hotmatch/store";
 import { supabase, type DbProfile, type DbUserPhoto } from "@/lib/supabase";
@@ -28,7 +28,11 @@ async function uploadFile(bucket: string, file: File, path: string): Promise<str
   const { data, error } = await supabase.storage
     .from(bucket)
     .upload(path, file, { upsert: true, contentType: file.type });
-  if (error) { console.error("[Upload] Failed:", error.message); return null; }
+  if (error) {
+    console.error("[Upload] Failed:", error.message);
+    toast.error(`Erro ao enviar imagem: ${error.message}`);
+    return null;
+  }
   const { data: { publicUrl } } = supabase.storage.from(bucket).getPublicUrl(data.path);
   return publicUrl;
 }
@@ -66,6 +70,7 @@ export function EditProfileModal({
   const [deletedPhotoIds, setDeletedPhotoIds] = useState<string[]>([]);
 
   const [saving, setSaving] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
@@ -130,12 +135,15 @@ export function EditProfileModal({
       /* 1 — Upload avatar to dedicated 'avatars' bucket if a new file was selected */
       let newAvatarUrl: string | null = null;
       if (avatarFile) {
+        setUploadingAvatar(true);
         const ext = avatarFile.name.split(".").pop() ?? "jpg";
         newAvatarUrl = await uploadFile(
           "avatars",
           avatarFile,
           `${profileId}/avatar_${Date.now()}.${ext}`,
         );
+        setUploadingAvatar(false);
+        if (!newAvatarUrl) { setSaving(false); return; }
       }
       const finalAvatarUrl = newAvatarUrl ?? profile?.avatar_url ?? storeAvatar;
 
@@ -265,9 +273,12 @@ export function EditProfileModal({
               </div>
               <button
                 onClick={() => avatarInputRef.current?.click()}
-                className="tap-scale absolute -bottom-1 -right-1 grid size-7 place-items-center rounded-full bg-gradient-hot shadow-hot"
+                disabled={uploadingAvatar}
+                className="tap-scale absolute -bottom-1 -right-1 grid size-7 place-items-center rounded-full bg-gradient-hot shadow-hot disabled:opacity-70"
               >
-                <Camera className="size-3.5 text-white" />
+                {uploadingAvatar
+                  ? <Loader2 className="size-3.5 text-white animate-spin" />
+                  : <Camera className="size-3.5 text-white" />}
               </button>
               <input ref={avatarInputRef} type="file" accept="image/*" className="hidden" onChange={onAvatarPick} />
             </div>

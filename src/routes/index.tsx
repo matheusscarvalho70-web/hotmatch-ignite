@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BadgeCheck, Crown, Heart, MapPin, RotateCcw, Sparkles, Star, X } from "lucide-react";
 import { toast } from "sonner";
+import confetti from "canvas-confetti";
 import { TopBar } from "@/components/hotmatch/TopBar";
 import { haversineKm, useProfiles, useUserLocation } from "@/hooks/use-profiles";
 import { recordMatch } from "@/hooks/use-matches";
@@ -227,6 +228,16 @@ function MatchModal({
   onClose: () => void;
   onMessage: () => void;
 }) {
+  useEffect(() => {
+    const colors = ["#ff3c5a", "#ff8c00", "#ffd700", "#ff69b4", "#ffffff"];
+    const end = Date.now() + 2400;
+    (function frame() {
+      confetti({ particleCount: 6, angle: 60, spread: 55, origin: { x: 0 }, colors, disableForReducedMotion: true });
+      confetti({ particleCount: 6, angle: 120, spread: 55, origin: { x: 1 }, colors, disableForReducedMotion: true });
+      if (Date.now() < end) requestAnimationFrame(frame);
+    })();
+  }, []);
+
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 px-6 backdrop-blur-sm">
       <div className="w-full max-w-xs rounded-3xl bg-surface p-8 text-center shadow-[0_0_60px_rgba(255,60,90,0.3)]">
