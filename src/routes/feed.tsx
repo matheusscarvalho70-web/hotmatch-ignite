@@ -163,7 +163,7 @@ function PostSkeleton() {
 }
 
 function PostCard({ post, liked, onLike }: { post: RichPost; liked: boolean; onLike: () => void }) {
-  const { unlocked, followed } = useAppState();
+  const { unlocked, followed, profileId } = useAppState();
   const isLocked = post.is_locked && !unlocked.includes(post.id);
   const isFollowing = followed.includes(post.author_id);
 
@@ -193,7 +193,22 @@ function PostCard({ post, liked, onLike }: { post: RichPost; liked: boolean; onL
           <p className="text-xs text-muted-foreground">{relTime} · {post.media_type}</p>
         </div>
         <button
-          onClick={() => { isFollowing ? actions.unfollow(post.author_id) : actions.follow(post.author_id); toast(isFollowing ? `Deixou de seguir ${post.author.name}` : `Seguindo ${post.author.name} 💗`); }}
+          onClick={() => {
+            if (isFollowing) {
+              actions.unfollow(post.author_id);
+              toast(`Deixou de seguir ${post.author.name}`);
+              if (profileId) supabase.from("follows").delete()
+                .eq("follower_id", profileId).eq("following_id", post.author_id)
+                .then(() => {}).catch(() => {});
+            } else {
+              actions.follow(post.author_id);
+              toast(`Seguindo ${post.author.name} 💗`);
+              if (profileId) supabase.from("follows").upsert(
+                { follower_id: profileId, following_id: post.author_id },
+                { onConflict: "follower_id,following_id" }
+              ).then(() => {}).catch(() => {});
+            }
+          }}
           className={`tap-scale flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition-all ${isFollowing ? "border border-border bg-surface-2 text-foreground" : "bg-gradient-hot text-primary-foreground"}`}>
           {isFollowing ? <><Check className="size-3" />Seguindo</> : "Seguir"}
         </button>
@@ -296,9 +311,46 @@ function PostModal({ onClose, profileId, onPosted }: {
 
     setSaving(false);
     if (error || !data) { toast.error("Erro ao publicar. Tente novamente."); return; }
-    onPosted({ ...(data as DbFeedPost), author: (data as Record<string, unknown>).profiles as DbProfile });
+    const richPost: RichPost = { ...(data as DbFeedPost), author: (data as Record<string, unknown>).profiles as DbProfile };
+    onPosted(richPost);
     onClose();
     toast("Mídia VIP publicada ✨", { description: `Preço: ${price === 0 ? "Grátis" : `${price} moedas`}` });
+
+    // Notify followers (fire-and-forget)
+    const authorName = richPost.author?.name ?? "Criadora";
+    supabase
+      .from("follows")
+      .select("follower_id, profiles!follower_id(onesignal_player_id)")
+      .eq("following_id", profileId)
+      .then(async ({ data: followers }) => {
+        if (!followers || followers.length === 0) return;
+        const notifs = followers.map((f) => ({
+          user_id: f.follower_id,
+          type: "feed" as const,
+          title: `Nova publicação de ${authorName} 📸`,
+          content: "Veja o novo conteúdo exclusivo no feed",
+          is_read: false,
+          actor_id: profileId,
+        }));
+        await supabase.from("notifications").insert(notifs).catch(() => {});
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+        const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+        for (const f of followers) {
+          const profile = (f as Record<string, unknown>).profiles as { onesignal_player_id?: string } | null;
+          const playerId = profile?.onesignal_player_id;
+          if (!playerId) continue;
+          fetch(`${supabaseUrl}/functions/v1/notify-user`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${anonKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              player_id: playerId,
+              title: `Nova publicação de ${authorName} 📸`,
+              message: "Veja o novo conteúdo exclusivo no feed!",
+            }),
+          }).catch(() => {});
+        }
+      })
+      .catch(() => {});
   }
 
   return (

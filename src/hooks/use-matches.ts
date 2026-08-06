@@ -89,6 +89,26 @@ export async function recordMatch(
     .eq("target_user_id", userId)
     .maybeSingle();
 
+  // Notify the target about the one-directional like (fire-and-forget).
+  // Fetch the actor's profile name + avatar so the notification can show the blurred photo.
+  supabase
+    .from("profiles")
+    .select("name, avatar_url")
+    .eq("id", userId)
+    .maybeSingle()
+    .then(({ data: actor }) => {
+      supabase.from("notifications").insert({
+        user_id: targetUserId,
+        type: "like",
+        title: actor?.name ? `${actor.name} curtiu você! 🔥` : "Alguém curtiu você! 🔥",
+        content: "Toque para ver quem te curtiu",
+        is_read: false,
+        actor_id: userId,
+        actor_avatar_url: actor?.avatar_url ?? null,
+      }).then(() => {});
+    })
+    .catch(() => {});
+
   if (!reverseLike) return { error: null, mutualMatch: false };
 
   // Step 4 — mutual match confirmed.

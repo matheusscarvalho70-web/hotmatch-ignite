@@ -38,10 +38,12 @@ export type DbUserPhoto = {
 export type DbNotification = {
   id: string;
   user_id: string;
-  type: "message" | "match" | "like";
+  type: "message" | "match" | "like" | "feed";
   title: string;
   content: string | null;
   is_read: boolean;
+  actor_id: string | null;
+  actor_avatar_url: string | null;
   created_at: string;
 };
 

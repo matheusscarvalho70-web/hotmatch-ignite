@@ -3,8 +3,9 @@ import { Bell, CheckCheck, Coins, Crown, Heart, MessageCircle, Sparkles, X, Zap 
 import { Component, useEffect, useState, type ReactNode } from "react";
 import { HotMark } from "@/components/hotmatch/HotMark";
 import { useNotifications } from "@/hooks/use-notifications";
-import { useAppState } from "@/lib/hotmatch/store";
+import { useAppState, actions } from "@/lib/hotmatch/store";
 import { supabase } from "@/lib/supabase";
+import type { DbNotification } from "@/lib/supabase";
 
 /* ------------------------------------------------------------------ */
 /*  Coin Badge (male)                                                    */
@@ -151,16 +152,82 @@ function GamificationModal({ onClose }: { onClose: () => void }) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Locked Like Row (male recipient — blurred avatar + unlock button)  */
+/* ------------------------------------------------------------------ */
+const UNLOCK_COST = 15;
+
+function LockedLikeRow({ n }: { n: DbNotification }) {
+  const { vip, coins } = useAppState();
+  const [unlocked, setUnlocked] = useState(false);
+
+  function handleUnlock() {
+    if (vip) { setUnlocked(true); return; }
+    const ok = actions.spendCoins(UNLOCK_COST);
+    if (ok) { setUnlocked(true); }
+    else {
+      import("sonner").then(({ toast }) =>
+        toast.error(`Saldo insuficiente (${coins}/${UNLOCK_COST} moedas)`)
+      );
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-3 py-3">
+      {/* Avatar */}
+      <div className="relative shrink-0">
+        {n.actor_avatar_url ? (
+          <img
+            src={n.actor_avatar_url}
+            alt=""
+            className={`size-10 rounded-full object-cover transition-all duration-300 ${
+              unlocked ? "" : "blur-md brightness-75"
+            }`}
+          />
+        ) : (
+          <span className="grid size-10 place-items-center rounded-full bg-surface-2 text-xl">
+            {unlocked ? "❤️" : "🔒"}
+          </span>
+        )}
+      </div>
+
+      <div className="min-w-0 flex-1">
+        {unlocked ? (
+          <>
+            <p className="text-sm font-semibold">{n.title ?? "Nova curtida"}</p>
+            <p className="text-xs text-muted-foreground">{n.content ?? ""}</p>
+          </>
+        ) : (
+          <>
+            <p className="text-sm font-semibold">Alguém te curtiu 🔥</p>
+            <p className="mb-2 text-xs text-muted-foreground">Desbloqueie para ver quem foi</p>
+            <button
+              onClick={handleUnlock}
+              className="flex items-center gap-1.5 rounded-full bg-gradient-hot px-3 py-1 text-[11px] font-bold text-white shadow-hot"
+            >
+              <Coins className="size-3" />
+              {vip ? "Ver grátis (VIP)" : `Ver por ${UNLOCK_COST} moedas`}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  Notifications Drawer                                                */
 /* ------------------------------------------------------------------ */
 function NotificationsDrawer({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
   const { notifications, loading, unreadCount, markAllRead } = useNotifications();
+  const { gender } = useAppState();
 
   const msgNotifs   = notifications.filter((n) => n.type === "message");
   const matchNotifs = notifications.filter((n) => n.type === "match");
   const likeNotifs  = notifications.filter((n) => n.type === "like");
-  const otherNotifs = notifications.filter((n) => !["message", "match", "like"].includes(n.type));
+  const feedNotifs  = notifications.filter((n) => n.type === "feed");
+  const otherNotifs = notifications.filter((n) => !["message", "match", "like", "feed"].includes(n.type));
+  const isMale = gender === "male";
 
   if (loading) return null;
 
@@ -215,13 +282,32 @@ function NotificationsDrawer({ onClose }: { onClose: () => void }) {
 
           {likeNotifs.length > 0 && (
             <Section title="Curtidas" icon={<Sparkles className="size-3.5 text-gold" />}>
-              {likeNotifs.map((n) => (
+              {likeNotifs.map((n) =>
+                isMale
+                  ? <LockedLikeRow key={n.id} n={n} />
+                  : (
+                    <div key={n.id} className="flex items-center gap-3 py-3">
+                      <NotifIcon emoji="❤️" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold">{n.title ?? "Nova curtida"}</p>
+                        <p className="text-xs text-muted-foreground">{n.content ?? ""}</p>
+                      </div>
+                    </div>
+                  )
+              )}
+            </Section>
+          )}
+
+          {feedNotifs.length > 0 && (
+            <Section title="Feed" icon={<Zap className="size-3.5 text-amber-400" />}>
+              {feedNotifs.map((n) => (
                 <div key={n.id} className="flex items-center gap-3 py-3">
-                  <NotifIcon emoji="❤️" />
+                  <NotifIcon emoji="📸" />
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold">{n.title ?? "Nova curtida"}</p>
+                    <p className="text-sm font-semibold">{n.title ?? "Nova publicação"}</p>
                     <p className="text-xs text-muted-foreground">{n.content ?? ""}</p>
                   </div>
+                  {!n.is_read && <span className="size-2 shrink-0 rounded-full bg-primary" />}
                 </div>
               ))}
             </Section>
