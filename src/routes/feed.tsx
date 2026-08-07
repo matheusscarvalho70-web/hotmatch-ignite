@@ -322,7 +322,7 @@ function PostModal({ onClose, profileId, onPosted }: {
   const [saving, setSaving] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
-  inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   function onFilePick(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
@@ -451,5 +451,4 @@ function PostModal({ onClose, profileId, onPosted }: {
         <input type="range" min={0} max={300} step={10} value={price} onChange={(e) => setPrice(Number(e.target.value))} className="mt-2 w-full accent-[oklch(0.86_0.16_92)]" />
         <div className="mt-5 flex gap-3">
           <button onClick={onClose} className="tap-scale flex-1 rounded-full border border-border bg-surface-2 py-3 text-sm font-semibold">Cancelar</button>
-          <button onClick={publish} disabled={saving || !file} className="tap-scale flex-[1.4] rounded-full bg-gradient-gold py-3 text-sm font-bold text-gold-foreground shadow-gold disabled:opacity-50">
-    
+          <button onClick={publish} disabled={saving || !file} className="tap-scale flex-[1.4] rounded-full bg-gradient-gold py-3 text-sm font-bold text-gold-foreground shadow-gold disabled:opacity-50"
