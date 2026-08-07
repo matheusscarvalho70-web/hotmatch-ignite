@@ -50,7 +50,10 @@ function Chat() {
   useEffect(() => {
     if (!myId || !partnerId) return;
     if (dbPartner === undefined) return;
-    if (dbPartner?.is_demo) { setHasMutualMatch(true); return; }
+    if (dbPartner?.is_demo) { 
+      setHasMutualMatch(true); 
+      return; 
+    }
 
     let cancelled = false;
     const [u1, u2] = [myId, partnerId].sort();
@@ -86,7 +89,9 @@ function Chat() {
         }
       });
 
-    return () => { cancelled = true; };
+    return () => { 
+      cancelled = true; 
+    };
   }, [myId, partnerId, dbPartner]);
 
   const { messages, loading, sendText, sendMedia, sendAudio, sendGift, sendLockedMedia } = useChat(partnerId);
@@ -97,7 +102,6 @@ function Chat() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [reportSubject, setReportSubject] = useState("");
-  const [reportDesc, setReportDesc] = useState("");
   const [recording, setRecording] = useState(false);
   const [recordSecs, setRecordSecs] = useState(0);
   const recordTimer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -411,4 +415,5 @@ function Chat() {
               {["Comportamento Inadequado", "Spam ou Golpe", "Perfil Falso", "Conteúdo Ofensivo"].map((reason) => (
                 <button key={reason} onClick={() => setReportSubject(reason)} className={`w-full rounded-xl border p-3 text-left text-xs font-medium ${reportSubject === reason ? "border-destructive bg-destructive/10 text-destructive" : "border-border bg-background"}`}>
                   {reason}
-     
+                </button>
+    
