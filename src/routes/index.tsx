@@ -47,14 +47,11 @@ function Discover() {
 
   const { profiles, loading } = useProfiles(coords?.lat, coords?.lng, swipedIds);
 
+  // Deck de perfis sem bloqueios rígidos para testes
   const deck = useMemo(() => {
     if (!profiles.length) return [];
-    return profiles.filter((p) => {
-      if (p.id === profileId) return false;
-      if (gender === "male") return p.gender === "female";
-      return true;
-    });
-  }, [profiles, profileId, gender]);
+    return profiles.filter((p) => p.id !== profileId);
+  }, [profiles, profileId]);
 
   const [lockedCard, setLockedCard] = useState<DbProfile | null>(null);
   const [matchedProfile, setMatchedProfile] = useState<DbProfile | null>(null);
@@ -72,15 +69,25 @@ function Discover() {
   async function decide(dir: "left" | "right" | "up") {
     const target = lockedCard ?? deck[0];
     
-    // Fallback: se profileId estiver nulo no store, busca direto do auth do Supabase
+    // Busca garantida do ID do usuário logado
     let activeUserId = profileId;
     if (!activeUserId) {
-      const { data: authData } = await supabase.auth.getUser();
-      activeUserId = authData.user?.id ?? null;
+      const { data: sessionData } = await supabase.auth.getSession();
+      activeUserId = sessionData.session?.user?.id ?? null;
+    }
+    if (!activeUserId) {
+      const { data: userData } = await supabase.auth.getUser();
+      activeUserId = userData.user?.id ?? null;
     }
 
-    if (!target || !activeUserId) {
-      console.error("Tentativa de swipe sem usuario ativo ou perfil alvo", { activeUserId, target });
+    if (!target) {
+      toast.error("Nenhum perfil ativo para curtir!");
+      return;
+    }
+
+    if (!activeUserId) {
+      toast.error("Usuário não identificado! Faça login novamente.");
+      console.error("Erro: activeUserId indisponível", { profileId, target });
       return;
     }
 
@@ -90,18 +97,19 @@ function Discover() {
     setSwipedIds((prev) => [...prev, target.id]);
     setLeaving(dir);
 
-    // Executa a chamada do Match e verifica retorno
+    // Executa o envio para o Supabase com o Trigger do Banco
     try {
       const res = await recordMatch(activeUserId, target.id, action);
       if (res.error) {
-        console.error("Erro retornado do recordMatch:", res.error);
+        toast.error(`Erro ao salvar ação: ${res.error}`);
+        console.error("Erro no recordMatch:", res.error);
       }
       if (res.mutualMatch) {
-        console.log("MATCH ENCONTRADO! Disparando modal...");
+        console.log("🔥 MATCH CONFIRMADO! Exibindo tela de Match...");
         setMatchedProfile(target);
       }
     } catch (err) {
-      console.error("Erro inesperado no recordMatch:", err);
+      console.error("Exceção ao registrar match:", err);
     }
 
     if (dir === "right") toast("Curtida enviada 💗", { description: `Você curtiu ${target.name}` });
@@ -396,5 +404,5 @@ function Stamp({ label, tone, style, left, center }: {
       {label}
     </span>
   );
-        }
-                      
+                                                                         }
+               
