@@ -145,13 +145,44 @@ export async function recordMatch(
 }
 
 export async function fetchMutualMatchIds(profileId: string): Promise<Set<string>> {
-  const { data } = await supabase
+  if (!profileId) return new Set();
+
+  const matchSet = new Set<string>();
+
+  // 1. Busca na tabela mutual_matches
+  const { data: mutualData } = await supabase
     .from("mutual_matches")
     .select("user_1, user_2")
     .or(`user_1.eq.${profileId},user_2.eq.${profileId}`);
 
-  if (!data) return new Set();
-  return new Set(
-    data.map((r) => (r.user_1 === profileId ? r.user_2 : r.user_1)),
-  );
+  if (mutualData) {
+    mutualData.forEach((r) => {
+      if (r.user_1 === profileId && r.user_2) matchSet.add(r.user_2);
+      if (r.user_2 === profileId && r.user_1) matchSet.add(r.user_1);
+    });
+  }
+
+  // 2. Busca de redundância direto nas curtidas cruzadas (tabela matches)
+  const { data: myLikes } = await supabase
+    .from("matches")
+    .select("target_user_id")
+    .eq("user_id", profileId)
+    .eq("action", "like");
+
+  if (myLikes && myLikes.length > 0) {
+    const targetIds = myLikes.map((m) => m.target_user_id);
+    const { data: reciprocalLikes } = await supabase
+      .from("matches")
+      .select("user_id")
+      .in("user_id", targetIds)
+      .eq("target_user_id", profileId)
+      .eq("action", "like");
+
+    if (reciprocalLikes) {
+      reciprocalLikes.forEach((r) => matchSet.add(r.user_id));
+    }
+  }
+
+  return matchSet;
 }
+  
