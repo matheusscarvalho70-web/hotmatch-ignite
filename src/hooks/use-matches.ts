@@ -29,8 +29,6 @@ export function useMatches() {
   return { matches, loading };
 }
 
-// Best-effort push via the notify-user edge function.
-// Never throws — push is informational and must not block the match flow.
 async function sendPushNotification(playerId: string, title: string, message: string) {
   try {
     const url = `${import.meta.env.VITE_SUPABASE_URL as string}/functions/v1/notify-user`;
@@ -43,29 +41,17 @@ async function sendPushNotification(playerId: string, title: string, message: st
       body: JSON.stringify({ player_id: playerId, title, message }),
     });
   } catch {
-    // Intentionally swallowed — push is best-effort
+    // Push opcional
   }
 }
 
-/**
- * Record a swipe decision and, for likes, run the full mutual-match flow:
- *
- * 1. Upsert into `matches`         — keeps the feed exclusion list up to date.
- * 2. Upsert into `likes`           — one-directional like ledger.
- * 3. Query `likes` for the reverse — did the target already like this user?
- * 4. Upsert into `mutual_matches`  — canonical ordered pair (user1_id < user2_id).
- * 5. Insert notifications for both users + fire OneSignal push to both.
- *
- * Steps 4–5 are the only ones that trigger on a mutual match.
- * Steps 1–3 run on every like.
- */
 export async function recordMatch(
   userId: string,
   targetUserId: string,
   action: "like" | "pass",
 ): Promise<{ error: string | null; mutualMatch: boolean }> {
 
-  // Always record the swipe so the feed excludes already-seen profiles.
+  // 1. Grava no feed
   const { error: swipeError } = await supabase.from("matches").upsert(
     { user_id: userId, target_user_id: targetUserId, action },
     { onConflict: "user_id,target_user_id" },
@@ -74,23 +60,23 @@ export async function recordMatch(
 
   if (action !== "like") return { error: null, mutualMatch: false };
 
-  // Step 2 — record the like in the dedicated likes table.
+  // 2. Grava o like
   const { error: likeError } = await supabase.from("likes").upsert(
     { user_id: userId, target_user_id: targetUserId },
     { onConflict: "user_id,target_user_id" },
   );
   if (likeError) return { error: likeError.message, mutualMatch: false };
 
-  // Step 3 — check whether the target has already liked this user back.
-  const { data: reverseLike } = await supabase
+  // 3. Checa se o outro usario ja deu like
+  const { data: reverseLikes } = await supabase
     .from("likes")
     .select("id")
     .eq("user_id", targetUserId)
-    .eq("target_user_id", userId)
-    .maybeSingle();
+    .eq("target_user_id", userId);
 
-  // Notify the target about the one-directional like (fire-and-forget).
-  // Fetch the actor's profile name + avatar so the notification can show the blurred photo.
+  const reverseLike = reverseLikes && reverseLikes.length > 0 ? reverseLikes[0] : null;
+
+  // Notificao de like individual
   supabase
     .from("profiles")
     .select("name, avatar_url")
@@ -111,17 +97,18 @@ export async function recordMatch(
 
   if (!reverseLike) return { error: null, mutualMatch: false };
 
-  // Step 4 — mutual match confirmed.
-  // Store a canonical ordered pair (user1_id always < user2_id lexicographically)
-  // so there is exactly one row per couple regardless of who liked first.
+  // 4. DEU MATCH MUTUO! Grava na tabela com as colunas corretas (user_1 e user_2)
   const [u1, u2] = [userId, targetUserId].sort();
-  const { error: matchError } = await supabase.from("mutual_matches").upsert(
-    { user1_id: u1, user2_id: u2 },
-    { onConflict: "user1_id,user2_id" },
-  );
-  if (matchError) return { error: matchError.message, mutualMatch: false };
+  const { error: matchError } = await supabase.from("mutual_matches").insert({
+    user_1: u1,
+    user_2: u2,
+  });
 
-  // Step 5 — notifications + push for both users (best-effort, fire-and-forget).
+  if (matchError && !matchError.message.includes("duplicate")) {
+    console.error("Erro ao gravar match:", matchError);
+  }
+
+  // 5. Notifica ambos
   supabase
     .from("profiles")
     .select("id, name, onesignal_player_id")
@@ -137,26 +124,16 @@ export async function recordMatch(
         ? `Você e ${me.name} se curtiram! Comece a conversar agora.`
         : "Vocês se curtiram! Comece a conversar agora.";
 
-      // Insert in-app notifications for both users
       supabase.from("notifications").insert([
         { user_id: userId, type: "match", title: "Deu Match! 🔥", content: meContent, is_read: false },
         { user_id: targetUserId, type: "match", title: "Deu Match! 🔥", content: themContent, is_read: false },
       ]).then(() => {});
 
-      // Fire OneSignal push to each user who has a registered player ID
-      if ((me as { onesignal_player_id?: string | null } | undefined)?.onesignal_player_id) {
-        sendPushNotification(
-          (me as { onesignal_player_id: string }).onesignal_player_id,
-          "Deu Match! 🔥",
-          meContent,
-        );
+      if ((me as any)?.onesignal_player_id) {
+        sendPushNotification((me as any).onesignal_player_id, "Deu Match! 🔥", meContent);
       }
-      if ((them as { onesignal_player_id?: string | null } | undefined)?.onesignal_player_id) {
-        sendPushNotification(
-          (them as { onesignal_player_id: string }).onesignal_player_id,
-          "Deu Match! 🔥",
-          themContent,
-        );
+      if ((them as any)?.onesignal_player_id) {
+        sendPushNotification((them as any).onesignal_player_id, "Deu Match! 🔥", themContent);
       }
     })
     .catch(() => {});
@@ -165,17 +142,16 @@ export async function recordMatch(
 }
 
 /**
- * Returns the partner IDs of all confirmed mutual matches for the given user.
- * Queries `mutual_matches` where the user appears as either user1_id or user2_id.
+ * Busca a lista de matches buscando nas colunas user_1 e user_2
  */
 export async function fetchMutualMatchIds(profileId: string): Promise<Set<string>> {
   const { data } = await supabase
     .from("mutual_matches")
-    .select("user1_id, user2_id")
-    .or(`user1_id.eq.${profileId},user2_id.eq.${profileId}`);
+    .select("user_1, user_2")
+    .or(`user_1.eq.${profileId},user_2.eq.${profileId}`);
 
   if (!data) return new Set();
   return new Set(
-    data.map((r) => (r.user1_id === profileId ? r.user2_id : r.user1_id)),
+    data.map((r) => (r.user_1 === profileId ? r.user_2 : r.user_1)),
   );
 }
