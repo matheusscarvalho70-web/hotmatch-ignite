@@ -84,22 +84,24 @@ function ProfilePage() {
     <div className="min-h-screen pb-32">
       <TopBar title="Perfil" />
 
-      <div className="relative mx-4 h-32 overflow-hidden rounded-3xl">
+      {/* BANNER DE CAPA (Pega o topo da foto/story) */}
+      <div className="relative mx-4 h-36 overflow-hidden rounded-3xl border border-white/10 shadow-lg">
         {displayAvatar ? (
-          <img src={displayAvatar} alt="Capa" className="size-full object-cover object-top" />
+          <img src={displayAvatar} alt="Capa" className="size-full object-cover object-top filter brightness-90" />
         ) : (
           <div className="size-full bg-gradient-to-br from-surface-2 to-surface" />
         )}
-        <div className="absolute inset-0 bg-gradient-to-t from-background via-background/30 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-background via-background/40 to-transparent" />
       </div>
 
-      <div className="-mt-10 flex flex-col items-center px-4">
+      {/* AVATAR EM BOLINHA (Centralizado e sem vazar) */}
+      <div className="-mt-12 flex flex-col items-center px-4 relative z-10">
         {loading ? (
           <div className="size-24 rounded-full bg-surface-2 animate-pulse" />
         ) : (
-          <span className="ring-match grid size-24 place-items-center rounded-full p-[3px] shadow-gold">
+          <span className="grid size-24 shrink-0 place-items-center overflow-hidden rounded-full p-[3px] ring-match shadow-gold bg-background">
             {displayAvatar ? (
-              <img src={displayAvatar} alt={displayName} className="size-full rounded-full object-cover" />
+              <img src={displayAvatar} alt={displayName} className="size-full rounded-full object-cover object-center" />
             ) : (
               <div className="size-full rounded-full bg-surface-2" />
             )}
@@ -156,7 +158,6 @@ function VisitorProfile({ profile, publicPhotos, vipPhotos, isUnlocked, onBack, 
   profile: DbProfile; publicPhotos: string[]; vipPhotos: string[]; isUnlocked: boolean; onBack: () => void; onImageClick: (u: string) => void;
 }) {
   const { vip, profileId, coins, galleryUnlocks } = useAppState();
-  const navigate = useNavigate();
   const [tab, setTab] = useState<"public" | "vip">("public");
   const [unlocked, setUnlocked] = useState(isUnlocked || galleryUnlocks.includes(profile.id));
   const [paying, setPaying] = useState(false);
@@ -186,16 +187,26 @@ function VisitorProfile({ profile, publicPhotos, vipPhotos, isUnlocked, onBack, 
   return (
     <div className="min-h-screen pb-32">
       <TopBar title={profile.name} />
-      <div className="-mt-2 flex flex-col items-center px-4 pt-10">
-        <span className="ring-match grid size-24 place-items-center rounded-full p-[3px]">
-          <img src={profile.avatar_url || ""} alt={profile.name} className="size-full rounded-full object-cover" />
+
+      <div className="relative mx-4 h-36 overflow-hidden rounded-3xl border border-white/10 shadow-lg">
+        {profile.avatar_url ? (
+          <img src={profile.avatar_url} alt="Capa" className="size-full object-cover object-top filter brightness-90" />
+        ) : (
+          <div className="size-full bg-gradient-to-br from-surface-2 to-surface" />
+        )}
+        <div className="absolute inset-0 bg-gradient-to-t from-background via-background/40 to-transparent" />
+      </div>
+
+      <div className="-mt-12 flex flex-col items-center px-4 relative z-10">
+        <span className="grid size-24 shrink-0 place-items-center overflow-hidden rounded-full p-[3px] ring-match bg-background">
+          <img src={profile.avatar_url || ""} alt={profile.name} className="size-full rounded-full object-cover object-center" />
         </span>
         <h2 className="mt-2 text-xl font-extrabold">{profile.name}</h2>
         <p className="text-sm text-muted-foreground">{profile.bio}</p>
       </div>
 
       <div className="mx-4 mt-6 flex rounded-full border bg-surface p-1">
-        <button onClick={() => setTab("public")} className={`flex-1 rounded-full py-2 text-xs font-bold ${tab === "public" ? "bg-gradient-hot text-white" : "text-muted-foreground"}`}>Publica</button>
+        <button onClick={() => setTab("public")} className={`flex-1 rounded-full py-2 text-xs font-bold ${tab === "public" ? "bg-gradient-hot text-white" : "text-muted-foreground"}`}>Pública</button>
         <button onClick={() => setTab("vip")} className={`flex-1 rounded-full py-2 text-xs font-bold ${tab === "vip" ? "bg-gradient-gold text-black" : "text-muted-foreground"}`}>VIP</button>
       </div>
 
@@ -206,7 +217,7 @@ function VisitorProfile({ profile, publicPhotos, vipPhotos, isUnlocked, onBack, 
               <img key={i} src={src} alt="Foto" onClick={() => onImageClick(src)} className="aspect-square w-full cursor-pointer rounded-xl object-cover" />
             ))
           ) : (
-            <EmptyGallery text="Esta criadora ainda nao adicionou fotos publicas." />
+            <EmptyGallery text="Esta criadora ainda não adicionou fotos públicas." />
           )
         ) : (
           hasVip ? (
@@ -217,7 +228,7 @@ function VisitorProfile({ profile, publicPhotos, vipPhotos, isUnlocked, onBack, 
               </div>
             ))
           ) : (
-            <EmptyGallery text="Esta criadora ainda nao adicionou fotos VIP." />
+            <EmptyGallery text="Esta criadora ainda não adicionou fotos VIP." />
           )
         )}
       </div>
@@ -246,13 +257,13 @@ function CreatorProfile({ navigate, onMenu, publicPhotos, vipPhotos, stats, onIm
   return (
     <>
       <div className="mt-5 grid grid-cols-3 gap-3 px-4">
-        <Stat icon={<Eye className="size-4" />} label="Views" value="0" />
+        <Stat icon={<Eye className="size-4" />} label="Visualizações" value="0" />
         <Stat icon={<Heart className="size-4 text-primary" />} label="Curtidas" value={stats.likesTotal.toLocaleString()} />
         <Stat icon={<Gift className="size-4 text-gold" />} label="Mimos" value={stats.giftsReceived.toLocaleString()} />
       </div>
 
       <div className="mx-4 mt-6 flex rounded-full border bg-surface p-1">
-        <button onClick={() => setTab("public")} className={`flex-1 rounded-full py-2 text-xs font-bold ${tab === "public" ? "bg-gradient-hot text-white" : "text-muted-foreground"}`}>Galeria publica</button>
+        <button onClick={() => setTab("public")} className={`flex-1 rounded-full py-2 text-xs font-bold ${tab === "public" ? "bg-gradient-hot text-white" : "text-muted-foreground"}`}>Galeria pública</button>
         <button onClick={() => setTab("vip")} className={`flex-1 rounded-full py-2 text-xs font-bold ${tab === "vip" ? "bg-gradient-gold text-black" : "text-muted-foreground"}`}>Galeria VIP</button>
       </div>
 
@@ -260,10 +271,10 @@ function CreatorProfile({ navigate, onMenu, publicPhotos, vipPhotos, stats, onIm
         {tab === "public" ? (
           hasPublic ? (
             publicPhotos.map((src, i) => (
-              <img key={i} src={src} alt="Foto publica" onClick={() => onImageClick(src)} className="aspect-square w-full cursor-pointer rounded-xl object-cover" />
+              <img key={i} src={src} alt="Foto pública" onClick={() => onImageClick(src)} className="aspect-square w-full cursor-pointer rounded-xl object-cover" />
             ))
           ) : (
-            <EmptyGallery text="Sua galeria publica esta vazia. Adicione fotos em Editar perfil." />
+            <EmptyGallery text="Sua galeria pública está vazia. Adicione fotos em Editar perfil." />
           )
         ) : (
           hasVip ? (
@@ -271,7 +282,7 @@ function CreatorProfile({ navigate, onMenu, publicPhotos, vipPhotos, stats, onIm
               <img key={i} src={src} alt="Foto VIP" onClick={() => onImageClick(src)} className="aspect-square w-full cursor-pointer rounded-xl object-cover" />
             ))
           ) : (
-            <EmptyGallery text="Sua galeria VIP esta vazia. Adicione fotos em Editar perfil." isGold />
+            <EmptyGallery text="Sua galeria VIP está vazia. Adicione fotos em Editar perfil." isGold />
           )
         )}
       </div>
@@ -290,7 +301,7 @@ function MaleProfile({ navigate, onMenu, publicPhotos, stats, onImageClick }: {
   return (
     <>
       <div className="mt-5 grid grid-cols-2 gap-3 px-4">
-        <Stat icon={<Heart className="size-4 text-primary" />} label="Interacoes" value={stats.likesTotal.toLocaleString()} />
+        <Stat icon={<Heart className="size-4 text-primary" />} label="Interações" value={stats.likesTotal.toLocaleString()} />
         <Stat icon={<Users className="size-4 text-gold" />} label="Seguindo" value={String(followed.length)} />
       </div>
 
@@ -311,7 +322,7 @@ function MaleProfile({ navigate, onMenu, publicPhotos, stats, onImageClick }: {
             <img key={i} src={src} alt="Foto" onClick={() => onImageClick(src)} className="aspect-square w-full cursor-pointer rounded-xl object-cover" />
           ))
         ) : (
-          <EmptyGallery text="Sua galeria esta vazia. Adicione fotos em Editar perfil." />
+          <EmptyGallery text="Sua galeria está vazia. Adicione fotos em Editar perfil." />
         )}
       </div>
 
@@ -334,9 +345,9 @@ function SettingsMenu({ navigate, showEarnings, onMenu }: {
 }) {
   const items: { icon: React.ElementType; label: string; key: ModalKey }[] = [
     { icon: Settings, label: "Editar perfil e fotos", key: "edit" },
-    { icon: Shield, label: "Privacidade e verificacao", key: "privacy" },
+    { icon: Shield, label: "Privacidade e verificação", key: "privacy" },
     { icon: Crown, label: showEarnings ? "Dashboard de ganhos" : "Gerenciar assinatura VIP", key: "role" },
-    { icon: BarChart2, label: "Estatisticas do perfil", key: "stats" },
+    { icon: BarChart2, label: "Estatísticas do perfil", key: "stats" },
     { icon: HelpCircle, label: "Suporte HotMatch", key: "support" },
   ];
 
@@ -357,7 +368,7 @@ function SettingsMenu({ navigate, showEarnings, onMenu }: {
       <button
         onClick={() => {
           actions.signOut();
-          toast("Voce saiu da conta.");
+          toast("Você saiu da conta.");
           navigate({ to: "/bem-vindo" });
         }}
         className="mx-4 mt-4 flex w-[calc(100%-2rem)] items-center justify-center gap-2 rounded-full border py-3 text-sm text-muted-foreground"
@@ -376,5 +387,5 @@ function Stat({ icon, label, value }: { icon: React.ReactNode; label: string; va
       <p className="text-[10px] text-muted-foreground">{label}</p>
     </div>
   );
-                                              }
-     
+      }
+      
