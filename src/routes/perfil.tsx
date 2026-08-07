@@ -39,12 +39,12 @@ export const Route = createFileRoute("/perfil")({
       {
         name: "description",
         content:
-          "Gerencie sua galeria pública, sua galeria VIP trancada, estatísticas e configurações da conta HotMatch.",
+          "Gerencie sua galeria publica, sua galeria VIP trancada, estatisticas e configuracoes da conta HotMatch.",
       },
       { property: "og:title", content: "Meu Perfil — HotMatch" },
       {
         property: "og:description",
-        content: "Galeria pública, galeria VIP e estatísticas do seu perfil.",
+        content: "Galeria publica, galeria VIP e estatisticas do seu perfil.",
       },
     ],
   }),
@@ -505,7 +505,7 @@ function CreatorProfile({
           ) : (
             <div className="col-span-3 flex flex-col items-center gap-1 rounded-2xl border border-dashed border-border bg-surface py-8 text-center">
               <p className="text-sm font-bold text-muted-foreground">Galeria vazia</p>
-              <p className="text-xs text-muted-foreground">Adicione fotos em 'Editar perfil'.</p>
+              <p className="text-xs text-muted-foreground">Adicione fotos em Editar perfil.</p>
             </div>
           )
         ) : hasVipPhotos ? (
@@ -518,4 +518,4 @@ function CreatorProfile({
               height={1024}
               loading="lazy"
               onClick={() => onImageClick(src)}
-              className="aspect-square w-full cursor-pointer rounded-xl object-cover transition active
+              className="aspect-square w-full cursor-pointer rounded-xl object-cover transition active:s
