@@ -22,7 +22,7 @@ import { useChat, type LocalMessage } from "@/hooks/use-chat";
 import { useProfiles } from "@/hooks/use-profiles";
 import { supabase } from "@/lib/supabase";
 
-export const Route = createFileRoute("/mensagens.chat.$id")({
+export const Route = createFileRoute("/mensagens/$chatId")({
   component: Chat,
 });
 
@@ -34,7 +34,7 @@ const AUTO_REPLIES = [
 ];
 
 function Chat() {
-  const { id: chatId } = useParams({ from: "/mensagens.chat.$id" });
+  const { chatId } = useParams({ from: "/mensagens/$chatId" });
   const { unlocked, profileId, gender } = useAppState();
   const isCreator = gender === "female";
   const myId = profileId ?? "";
