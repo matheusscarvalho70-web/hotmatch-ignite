@@ -15,6 +15,7 @@ import {
   Settings,
   Shield,
   Users,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { TopBar } from "@/components/hotmatch/TopBar";
@@ -63,6 +64,9 @@ function ProfilePage() {
   const [modal, setModal] = useState<ModalKey>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
+  /* Fullscreen Lightbox State */
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+
   /* If uid is present and differs from profileId, we are viewing another user's profile */
   const viewingOther = !!uid && uid !== profileId;
   const targetId = uid ?? profileId ?? "";
@@ -71,7 +75,6 @@ function ProfilePage() {
   const { stats } = useProfileStats(viewingOther ? null : profileId);
 
   const isCreator = (profile?.gender ?? gender) === "female";
-  const isOwnProfile = !viewingOther;
 
   const displayName   = profile?.name      ?? storeName;
   const displayAge    = profile?.age        ?? null;
@@ -104,6 +107,7 @@ function ProfilePage() {
         vipPhotos={liveVip}
         isUnlocked={dbUnlocks.includes(targetId)}
         onBack={() => navigate({ to: "/feed" })}
+        onImageClick={(url) => setSelectedImage(url)}
       />
     );
   }
@@ -152,9 +156,44 @@ function ProfilePage() {
       </div>
 
       {isCreator ? (
-        <CreatorProfile vip={vip} navigate={navigate} onMenu={setModal} publicPhotos={livePublic} vipPhotos={liveVip} stats={stats} />
+        <CreatorProfile
+          vip={vip}
+          navigate={navigate}
+          onMenu={setModal}
+          publicPhotos={livePublic}
+          vipPhotos={liveVip}
+          stats={stats}
+          onImageClick={(url) => setSelectedImage(url)}
+        />
       ) : (
-        <MaleProfile navigate={navigate} onMenu={setModal} publicPhotos={livePublic} stats={stats} />
+        <MaleProfile
+          navigate={navigate}
+          onMenu={setModal}
+          publicPhotos={livePublic}
+          stats={stats}
+          onImageClick={(url) => setSelectedImage(url)}
+        />
+      )}
+
+      {/* Lightbox / Fullscreen Modal */}
+      {selectedImage && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 p-4 backdrop-blur-md transition-all"
+          onClick={() => setSelectedImage(null)}
+        >
+          <button
+            onClick={() => setSelectedImage(null)}
+            className="absolute top-6 right-6 grid size-10 place-items-center rounded-full bg-white/10 text-white backdrop-blur-md transition hover:bg-white/20 active:scale-95"
+          >
+            <X className="size-6" />
+          </button>
+          <img
+            src={selectedImage}
+            alt="Visualização em Tela Cheia"
+            className="max-h-[90vh] max-w-[95vw] rounded-2xl object-contain shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
       )}
 
       {/* Modals & drawers */}
@@ -183,20 +222,24 @@ function VisitorProfile({
   vipPhotos,
   isUnlocked,
   onBack,
+  onImageClick,
 }: {
   profile: import("@/lib/supabase").DbProfile;
   publicPhotos: string[];
   vipPhotos: string[];
   isUnlocked: boolean;
   onBack: () => void;
+  onImageClick: (url: string) => void;
 }) {
-  const { gender, vip, profileId, coins, galleryUnlocks } = useAppState();
+  const { vip, profileId, coins, galleryUnlocks } = useAppState();
   const navigate = useNavigate();
   const [tab, setTab] = useState<"public" | "vip">("public");
   const [unlocked, setUnlocked] = useState(isUnlocked || galleryUnlocks.includes(profile.id));
   const [paying, setPaying] = useState(false);
 
   const price = vip ? VIP_GALLERY_PRICE_VIP : VIP_GALLERY_PRICE;
+  const hasPublicPhotos = Array.isArray(publicPhotos) && publicPhotos.length > 0;
+  const hasVipPhotos = Array.isArray(vipPhotos) && vipPhotos.length > 0;
 
   async function handleUnlock() {
     if (!profileId) return;
@@ -207,14 +250,12 @@ function VisitorProfile({
     }
     setPaying(true);
     try {
-      /* a) Debit coins from visitor */
       const { error: debitError } = await supabase
         .from("profiles")
         .update({ coin_balance: coins - price })
         .eq("id", profileId);
       if (debitError) throw new Error(debitError.message);
 
-      /* b) Record transaction */
       await supabase.from("transactions").insert({
         user_id: profileId,
         type: "unlock",
@@ -222,14 +263,12 @@ function VisitorProfile({
         amount: 0,
       });
 
-      /* c) Credit creator earnings (1 coin = R$0.05 conversion for demo) */
       const creatorEarnings = Number(profile.earnings_brl ?? 0) + price * 0.05;
       await supabase
         .from("profiles")
         .update({ earnings_brl: creatorEarnings })
         .eq("id", profile.id);
 
-      /* d) Persist unlock row so it's permanent in DB */
       await supabase
         .from("vip_gallery_unlocks")
         .upsert(
@@ -237,7 +276,6 @@ function VisitorProfile({
           { onConflict: "visitor_id,creator_id" },
         );
 
-      /* e) Update local store */
       actions.unlockGallery(profile.id, price);
 
       setUnlocked(true);
@@ -253,7 +291,6 @@ function VisitorProfile({
     <div className="min-h-screen pb-32">
       <TopBar title={profile.name} />
 
-      {/* Cover + avatar */}
       <div className="relative mx-4 h-32 overflow-hidden rounded-3xl">
         {profile.avatar_url ? (
           <img src={profile.avatar_url} alt="Capa" width={768} height={1024} className="size-full object-cover object-top" />
@@ -283,7 +320,6 @@ function VisitorProfile({
         {profile.bio && <p className="mt-2 max-w-xs text-center text-sm text-muted-foreground">{profile.bio}</p>}
       </div>
 
-      {/* Gallery tabs */}
       <div className="mx-4 mt-6 flex rounded-full border border-border bg-surface p-1">
         <button
           onClick={() => setTab("public")}
@@ -299,31 +335,52 @@ function VisitorProfile({
         </button>
       </div>
 
-      {/* Gallery grid */}
       <div className="mt-4 grid grid-cols-3 gap-1.5 px-4">
         {tab === "public" ? (
-          publicPhotos.length > 0 ? (
+          hasPublicPhotos ? (
             publicPhotos.map((src, i) => (
-              <img key={i} src={src} alt={`Foto ${i + 1}`} width={768} height={1024} loading="lazy" className="aspect-square w-full rounded-xl object-cover" />
+              <img
+                key={i}
+                src={src}
+                alt={`Foto ${i + 1}`}
+                width={768}
+                height={1024}
+                loading="lazy"
+                onClick={() => onImageClick(src)}
+                className="aspect-square w-full cursor-pointer rounded-xl object-cover transition active:scale-95"
+              />
             ))
           ) : (
-            <p className="col-span-3 py-8 text-center text-sm text-muted-foreground">Nenhuma foto pública ainda.</p>
+            <div className="col-span-3 flex flex-col items-center gap-1 rounded-2xl border border-dashed border-border bg-surface py-8 text-center">
+              <p className="text-sm font-bold text-muted-foreground">Galeria vazia</p>
+              <p className="text-xs text-muted-foreground">Esta criadora ainda não publicou fotos públicas.</p>
+            </div>
           )
         ) : (
           <>
-            {vipPhotos.length === 0 ? (
-              <p className="col-span-3 py-8 text-center text-sm text-muted-foreground">Esta criadora ainda não adicionou fotos VIP.</p>
+            {!hasVipPhotos ? (
+              <div className="col-span-3 flex flex-col items-center gap-1 rounded-2xl border border-dashed border-border bg-surface py-8 text-center">
+                <p className="text-sm font-bold text-gold">Galeria VIP vazia</p>
+                <p className="text-xs text-muted-foreground">Esta criadora ainda não adicionou fotos VIP.</p>
+              </div>
             ) : (
               vipPhotos.map((src, i) => (
-                <div key={i} className="relative aspect-square overflow-hidden rounded-xl">
+                <div
+                  key={i}
+                  className="relative aspect-square overflow-hidden rounded-xl"
+                  onClick={() => {
+                    if (unlocked) onImageClick(src);
+                  }}
+                >
                   <img
-                    key={i}
                     src={src}
                     alt={`VIP ${i + 1}`}
                     width={768}
                     height={1024}
                     loading="lazy"
-                    className={`size-full object-cover transition-all duration-300 ${unlocked ? "" : "scale-110 blur-2xl brightness-50"}`}
+                    className={`size-full object-cover transition-all duration-300 ${
+                      unlocked ? "cursor-pointer hover:scale-105" : "scale-110 blur-2xl brightness-50"
+                    }`}
                   />
                   {!unlocked && (
                     <span className="absolute left-1 top-1 grid size-5 place-items-center rounded-full bg-black/60">
@@ -337,8 +394,7 @@ function VisitorProfile({
         )}
       </div>
 
-      {/* VIP unlock CTA */}
-      {tab === "vip" && vipPhotos.length > 0 && !unlocked && (
+      {tab === "vip" && hasVipPhotos && !unlocked && (
         <div className="mx-4 mt-4 flex flex-col items-center gap-3 rounded-3xl border border-gold/25 bg-gradient-to-br from-gold/10 via-primary/5 to-surface p-5 text-center">
           <span className="grid size-14 place-items-center rounded-full border border-gold/40 bg-black/50 shadow-gold">
             <Lock className="size-6 text-gold" />
@@ -371,7 +427,7 @@ function VisitorProfile({
         </div>
       )}
 
-      {tab === "vip" && unlocked && vipPhotos.length > 0 && (
+      {tab === "vip" && unlocked && hasVipPhotos && (
         <p className="mx-4 mt-3 text-center text-xs font-semibold text-emerald-400">
           Galeria VIP desbloqueada — aproveite! 🔓
         </p>
@@ -389,12 +445,12 @@ function VisitorProfile({
 
 /* ── Creator's own profile ───────────────────────────────────────────────────── */
 function CreatorProfile({
-  vip,
   navigate,
   onMenu,
   publicPhotos,
   vipPhotos,
   stats,
+  onImageClick,
 }: {
   vip: boolean;
   navigate: ReturnType<typeof useNavigate>;
@@ -402,8 +458,11 @@ function CreatorProfile({
   publicPhotos: string[];
   vipPhotos: string[];
   stats: ProfileStats;
+  onImageClick: (url: string) => void;
 }) {
   const [tab, setTab] = useState<"public" | "vip">("public");
+  const hasPublicPhotos = Array.isArray(publicPhotos) && publicPhotos.length > 0;
+  const hasVipPhotos = Array.isArray(vipPhotos) && vipPhotos.length > 0;
 
   return (
     <>
@@ -429,8 +488,9 @@ function CreatorProfile({
       </div>
 
       <div className="mt-4 grid grid-cols-3 gap-1.5 px-4">
-        {tab === "public"
-          ? publicPhotos.map((src, i) => (
+        {tab === "public" ? (
+          hasPublicPhotos ? (
+            publicPhotos.map((src, i) => (
               <img
                 key={i}
                 src={src}
@@ -438,144 +498,24 @@ function CreatorProfile({
                 width={768}
                 height={1024}
                 loading="lazy"
-                className="aspect-square w-full rounded-xl object-cover"
+                onClick={() => onImageClick(src)}
+                className="aspect-square w-full cursor-pointer rounded-xl object-cover transition active:scale-95"
               />
             ))
-          : /* Creator sees her own VIP photos unblurred */
-            vipPhotos.map((src, i) => (
-              <img
-                key={i}
-                src={src}
-                alt={`Mídia VIP ${i + 1}`}
-                width={768}
-                height={1024}
-                loading="lazy"
-                className="aspect-square w-full rounded-xl object-cover"
-              />
-            ))}
-      </div>
-
-      <SettingsMenu showEarnings navigate={navigate} onMenu={onMenu} />
-    </>
-  );
-}
-
-/* ── Male user's own profile ─────────────────────────────────────────────────── */
-function MaleProfile({
-  navigate,
-  onMenu,
-  publicPhotos,
-  stats,
-}: {
-  navigate: ReturnType<typeof useNavigate>;
-  onMenu: (k: ModalKey) => void;
-  publicPhotos: string[];
-  stats: ProfileStats;
-}) {
-  const { coins, followed } = useAppState();
-
-  return (
-    <>
-      <div className="mt-5 grid grid-cols-2 gap-3 px-4">
-        <Stat icon={<Heart className="size-4 text-primary" />} label="Interações" value={stats.likesTotal.toLocaleString("pt-BR")} />
-        <Stat icon={<Users className="size-4 text-gold" />} label="Seguindo" value={String(followed.length)} />
-      </div>
-
-      <div className="mx-4 mt-5 flex items-center justify-between rounded-2xl border border-border bg-surface p-4">
-        <div className="flex items-center gap-2">
-          <Coins className="size-5 text-gold" />
-          <div>
-            <p className="text-xs font-semibold text-muted-foreground">Saldo de moedas</p>
-            <p className="text-lg font-extrabold text-gradient-gold">{coins}</p>
-          </div>
-        </div>
-        <button
-          onClick={() => navigate({ to: "/loja" })}
-          className="tap-scale rounded-full bg-gradient-gold px-4 py-2 text-xs font-bold text-gold-foreground shadow-gold"
-        >
-          Recarregar
-        </button>
-      </div>
-
-      {publicPhotos.length > 0 ? (
-        <div className="mt-5 grid grid-cols-2 gap-1.5 px-4">
-          {publicPhotos.slice(0, 4).map((src, i) => (
-            <img key={i} src={src} alt={`Foto ${i + 1}`} width={400} height={400} loading="lazy" className="aspect-square w-full rounded-xl object-cover" />
-          ))}
-        </div>
-      ) : (
-        <div className="mx-4 mt-5 flex flex-col items-center gap-2 rounded-2xl border border-dashed border-border bg-surface py-8 text-center">
-          <p className="text-sm font-semibold text-muted-foreground">Galeria vazia</p>
-          <p className="text-xs text-muted-foreground">Adicione fotos em "Editar perfil".</p>
-        </div>
-      )}
-
-      <SettingsMenu navigate={navigate} onMenu={onMenu} />
-    </>
-  );
-}
-
-function SettingsMenu({
-  navigate,
-  showEarnings,
-  onMenu,
-}: {
-  navigate: ReturnType<typeof useNavigate>;
-  showEarnings?: boolean;
-  onMenu: (k: ModalKey) => void;
-}) {
-  const menuItems: { icon: React.ElementType; label: string; key: ModalKey }[] = [
-    { icon: Settings, label: "Editar perfil e fotos", key: "edit" },
-    { icon: Shield, label: "Privacidade e verificação", key: "privacy" },
-    {
-      icon: Crown,
-      label: showEarnings ? "Dashboard de ganhos" : "Gerenciar assinatura VIP",
-      key: "role",
-    },
-    { icon: BarChart2, label: "Estatísticas do perfil", key: "stats" },
-    { icon: HelpCircle, label: "Suporte HotMatch", key: "support" },
-  ];
-
-  return (
-    <>
-      <ul className="mx-4 mt-6 overflow-hidden rounded-3xl border border-border bg-surface">
-        {menuItems.map(({ icon: Icon, label, key }) => (
-          <li key={key}>
-            <button
-              onClick={() => onMenu(key)}
-              className="flex w-full items-center gap-3 border-b border-border px-4 py-3.5 text-left last:border-0 active:bg-surface-2 transition-colors"
-            >
-              <Icon className="size-4 shrink-0 text-muted-foreground" />
-              <span className="min-w-0 flex-1 truncate text-sm font-medium">{label}</span>
-              <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
-            </button>
-          </li>
-        ))}
-      </ul>
-
-      <button
-        onClick={() => {
-          actions.signOut();
-          toast("Você saiu da sua conta.", {
-            className: "bg-white text-zinc-900 border border-zinc-200 shadow-xl rounded-2xl",
-          });
-          navigate({ to: "/bem-vindo" });
-        }}
-        className="tap-scale mx-4 mt-4 flex w-[calc(100%-2rem)] items-center justify-center gap-2 rounded-full border border-border bg-surface py-3 text-sm font-semibold text-muted-foreground"
-      >
-        <LogOut className="size-4" />
-        Sair da conta / Alternar conta
-      </button>
-    </>
-  );
-}
-
-function Stat({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
-  return (
-    <div className="rounded-2xl border border-border bg-surface p-3 text-center">
-      <span className="mx-auto grid size-8 place-items-center">{icon}</span>
-      <p className="text-base font-extrabold tabular-nums">{value}</p>
-      <p className="text-[10px] text-muted-foreground">{label}</p>
-    </div>
-  );
-}
+          ) : (
+            <div className="col-span-3 flex flex-col items-center gap-1 rounded-2xl border border-dashed border-border bg-surface py-8 text-center">
+              <p className="text-sm font-bold text-muted-foreground">Galeria vazia</p>
+              <p className="text-xs text-muted-foreground">Adicione fotos em 'Editar perfil'.</p>
+            </div>
+          )
+        ) : hasVipPhotos ? (
+          vipPhotos.map((src, i) => (
+            <img
+              key={i}
+              src={src}
+              alt={`Mídia VIP ${i + 1}`}
+              width={768}
+              height={1024}
+              loading="lazy"
+              onClick={() => onImageClick(src)}
+              className="aspect-square w-full cursor-pointer rounded-xl object-cover transition 
