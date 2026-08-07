@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { z } from "zod";
 import {
   BarChart2, ChevronRight, Coins, Crown, Eye, Gift,
-  Heart, HelpCircle, Lock, LogOut, Settings, Shield, Users, X,
+  Heart, HelpCircle, Lock, LogOut, Settings, Shield, Users, X, Image as ImageIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import { TopBar } from "@/components/hotmatch/TopBar";
@@ -162,6 +162,8 @@ function VisitorProfile({ profile, publicPhotos, vipPhotos, isUnlocked, onBack, 
   const [paying, setPaying] = useState(false);
 
   const price = vip ? VIP_PRICE_DISCOUNT : VIP_PRICE;
+  const hasPublic = publicPhotos.length > 0;
+  const hasVip = vipPhotos.length > 0;
 
   async function handleUnlock() {
     if (!profileId || unlocked) return;
@@ -199,20 +201,28 @@ function VisitorProfile({ profile, publicPhotos, vipPhotos, isUnlocked, onBack, 
 
       <div className="mt-4 grid grid-cols-3 gap-1.5 px-4">
         {tab === "public" ? (
-          publicPhotos.map((src, i) => (
-            <img key={i} src={src} alt="Foto" onClick={() => onImageClick(src)} className="aspect-square w-full cursor-pointer rounded-xl object-cover" />
-          ))
+          hasPublic ? (
+            publicPhotos.map((src, i) => (
+              <img key={i} src={src} alt="Foto" onClick={() => onImageClick(src)} className="aspect-square w-full cursor-pointer rounded-xl object-cover" />
+            ))
+          ) : (
+            <EmptyGallery text="Esta criadora ainda nao adicionou fotos publicas." />
+          )
         ) : (
-          vipPhotos.map((src, i) => (
-            <div key={i} className="relative aspect-square overflow-hidden rounded-xl" onClick={() => unlocked && onImageClick(src)}>
-              <img src={src} alt="VIP" className={`size-full object-cover ${unlocked ? "cursor-pointer" : "blur-2xl brightness-50"}`} />
-              {!unlocked && <Lock className="absolute inset-0 m-auto size-5 text-gold" />}
-            </div>
-          ))
+          hasVip ? (
+            vipPhotos.map((src, i) => (
+              <div key={i} className="relative aspect-square overflow-hidden rounded-xl" onClick={() => unlocked && onImageClick(src)}>
+                <img src={src} alt="VIP" className={`size-full object-cover ${unlocked ? "cursor-pointer" : "blur-2xl brightness-50"}`} />
+                {!unlocked && <Lock className="absolute inset-0 m-auto size-5 text-gold" />}
+              </div>
+            ))
+          ) : (
+            <EmptyGallery text="Esta criadora ainda nao adicionou fotos VIP." />
+          )
         )}
       </div>
 
-      {tab === "vip" && !unlocked && (
+      {tab === "vip" && hasVip && !unlocked && (
         <div className="mx-4 mt-4 flex flex-col items-center gap-3 rounded-3xl border border-gold/25 bg-surface p-5 text-center">
           <p className="text-sm font-bold">Galeria VIP bloqueada</p>
           <button onClick={handleUnlock} disabled={paying} className="flex items-center gap-2 rounded-full bg-gradient-gold px-6 py-3 text-sm font-extrabold text-black">
@@ -230,6 +240,9 @@ function CreatorProfile({ navigate, onMenu, publicPhotos, vipPhotos, stats, onIm
   navigate: ReturnType<typeof useNavigate>; onMenu: (k: ModalKey) => void; publicPhotos: string[]; vipPhotos: string[]; stats: ProfileStats; onImageClick: (u: string) => void;
 }) {
   const [tab, setTab] = useState<"public" | "vip">("public");
+  const hasPublic = publicPhotos.length > 0;
+  const hasVip = vipPhotos.length > 0;
+
   return (
     <>
       <div className="mt-5 grid grid-cols-3 gap-3 px-4">
@@ -239,14 +252,28 @@ function CreatorProfile({ navigate, onMenu, publicPhotos, vipPhotos, stats, onIm
       </div>
 
       <div className="mx-4 mt-6 flex rounded-full border bg-surface p-1">
-        <button onClick={() => setTab("public")} className={`flex-1 rounded-full py-2 text-xs font-bold ${tab === "public" ? "bg-gradient-hot text-white" : "text-muted-foreground"}`}>Publica</button>
-        <button onClick={() => setTab("vip")} className={`flex-1 rounded-full py-2 text-xs font-bold ${tab === "vip" ? "bg-gradient-gold text-black" : "text-muted-foreground"}`}>VIP</button>
+        <button onClick={() => setTab("public")} className={`flex-1 rounded-full py-2 text-xs font-bold ${tab === "public" ? "bg-gradient-hot text-white" : "text-muted-foreground"}`}>Galeria publica</button>
+        <button onClick={() => setTab("vip")} className={`flex-1 rounded-full py-2 text-xs font-bold ${tab === "vip" ? "bg-gradient-gold text-black" : "text-muted-foreground"}`}>Galeria VIP</button>
       </div>
 
       <div className="mt-4 grid grid-cols-3 gap-1.5 px-4">
-        {(tab === "public" ? publicPhotos : vipPhotos).map((src, i) => (
-          <img key={i} src={src} alt="Foto" onClick={() => onImageClick(src)} className="aspect-square w-full cursor-pointer rounded-xl object-cover" />
-        ))}
+        {tab === "public" ? (
+          hasPublic ? (
+            publicPhotos.map((src, i) => (
+              <img key={i} src={src} alt="Foto publica" onClick={() => onImageClick(src)} className="aspect-square w-full cursor-pointer rounded-xl object-cover" />
+            ))
+          ) : (
+            <EmptyGallery text="Sua galeria publica esta vazia. Adicione fotos em Editar perfil." />
+          )
+        ) : (
+          hasVip ? (
+            vipPhotos.map((src, i) => (
+              <img key={i} src={src} alt="Foto VIP" onClick={() => onImageClick(src)} className="aspect-square w-full cursor-pointer rounded-xl object-cover" />
+            ))
+          ) : (
+            <EmptyGallery text="Sua galeria VIP esta vazia. Adicione fotos em Editar perfil." isGold />
+          )
+        )}
       </div>
 
       <SettingsMenu showEarnings navigate={navigate} onMenu={onMenu} />
@@ -258,6 +285,8 @@ function MaleProfile({ navigate, onMenu, publicPhotos, stats, onImageClick }: {
   navigate: ReturnType<typeof useNavigate>; onMenu: (k: ModalKey) => void; publicPhotos: string[]; stats: ProfileStats; onImageClick: (u: string) => void;
 }) {
   const { coins, followed } = useAppState();
+  const hasPublic = publicPhotos.length > 0;
+
   return (
     <>
       <div className="mt-5 grid grid-cols-2 gap-3 px-4">
@@ -277,13 +306,26 @@ function MaleProfile({ navigate, onMenu, publicPhotos, stats, onImageClick }: {
       </div>
 
       <div className="mt-5 grid grid-cols-3 gap-1.5 px-4">
-        {publicPhotos.map((src, i) => (
-          <img key={i} src={src} alt="Foto" onClick={() => onImageClick(src)} className="aspect-square w-full cursor-pointer rounded-xl object-cover" />
-        ))}
+        {hasPublic ? (
+          publicPhotos.map((src, i) => (
+            <img key={i} src={src} alt="Foto" onClick={() => onImageClick(src)} className="aspect-square w-full cursor-pointer rounded-xl object-cover" />
+          ))
+        ) : (
+          <EmptyGallery text="Sua galeria esta vazia. Adicione fotos em Editar perfil." />
+        )}
       </div>
 
       <SettingsMenu navigate={navigate} onMenu={onMenu} />
     </>
+  );
+}
+
+function EmptyGallery({ text, isGold }: { text: string; isGold?: boolean }) {
+  return (
+    <div className="col-span-3 flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border bg-surface py-8 text-center px-4">
+      <ImageIcon className={`size-6 ${isGold ? "text-gold" : "text-muted-foreground"}`} />
+      <p className="text-xs font-medium text-muted-foreground">{text}</p>
+    </div>
   );
 }
 
@@ -334,4 +376,5 @@ function Stat({ icon, label, value }: { icon: React.ReactNode; label: string; va
       <p className="text-[10px] text-muted-foreground">{label}</p>
     </div>
   );
-                }
+                                              }
+     
