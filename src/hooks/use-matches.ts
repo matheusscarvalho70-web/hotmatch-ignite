@@ -1,3 +1,50 @@
+import { useEffect, useState } from "react";
+import { supabase, type DbMatch } from "@/lib/supabase";
+import { useAppState } from "@/lib/hotmatch/store";
+
+export function useMatches() {
+  const { profileId } = useAppState();
+  const [matches, setMatches] = useState<DbMatch[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!profileId) { setLoading(false); return; }
+    let cancelled = false;
+
+    supabase
+      .from("matches")
+      .select("*")
+      .eq("user_id", profileId)
+      .eq("action", "like")
+      .order("created_at", { ascending: false })
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (!error && data) setMatches(data as DbMatch[]);
+        setLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [profileId]);
+
+  return { matches, loading };
+}
+
+async function sendPushNotification(playerId: string, title: string, message: string) {
+  try {
+    const url = `${import.meta.env.VITE_SUPABASE_URL as string}/functions/v1/notify-user`;
+    await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY as string}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ player_id: playerId, title, message }),
+    });
+  } catch {
+    // Push opcional
+  }
+}
+
 export async function recordMatch(
   userId: string,
   targetUserId: string,
@@ -95,4 +142,16 @@ export async function recordMatch(
     .catch(() => {});
 
   return { error: null, mutualMatch: true };
+}
+
+export async function fetchMutualMatchIds(profileId: string): Promise<Set<string>> {
+  const { data } = await supabase
+    .from("mutual_matches")
+    .select("user_1, user_2")
+    .or(`user_1.eq.${profileId},user_2.eq.${profileId}`);
+
+  if (!data) return new Set();
+  return new Set(
+    data.map((r) => (r.user_1 === profileId ? r.user_2 : r.user_1)),
+  );
 }
