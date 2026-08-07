@@ -75,13 +75,17 @@ function Store() {
       )}
 
       <div className="px-4">
-        {!isCreator || activeTab === "moedas" ? <BuyerView /> : <CreatorView />}
+        {!isCreator || activeTab === "moedas" ? (
+          <BuyerView isCreator={isCreator} />
+        ) : (
+          <CreatorView />
+        )}
       </div>
     </div>
   );
 }
 
-function BuyerView() {
+function BuyerView({ isCreator }: { isCreator: boolean }) {
   const { coins, vip } = useAppState();
   const [checkout, setCheckout] = useState<(typeof coinPacks)[number] | null>(null);
 
@@ -132,37 +136,40 @@ function BuyerView() {
         ))}
       </div>
 
-      <section className="mt-6 overflow-hidden rounded-3xl border border-gold/30 bg-gradient-to-br from-surface to-surface-2 p-5">
-        <div className="flex items-center gap-2">
-          <Crown className="size-5 text-gold" fill="currentColor" />
-          <h2 className="text-base font-extrabold">
-            Plano <span className="text-gradient-gold">HotMatch VIP Gold</span>
-          </h2>
-        </div>
-        <ul className="mt-3 space-y-2">
-          {[
-            "Super Likes ilimitados todos os dias",
-            "Veja quem curtiu seu perfil",
-            "20% de desconto em todos os mimos",
-            "Destaque dourado no Descobrir",
-          ].map((b) => (
-            <li key={b} className="flex items-center gap-2 text-sm text-foreground/85">
-              <Check className="size-4 shrink-0 text-gold" />
-              {b}
-            </li>
-          ))}
-        </ul>
-        <button
-          onClick={() => {
-            actions.activateVip();
-            toast("Bem-vindo ao VIP Gold 👑");
-          }}
-          disabled={vip}
-          className="tap-scale mt-4 w-full rounded-full bg-gradient-gold py-3.5 text-sm font-extrabold text-gold-foreground shadow-gold disabled:opacity-60"
-        >
-          {vip ? "VIP Gold ativo" : "Assinar por R$ 39,90/mês"}
-        </button>
-      </section>
+      {/* O plano VIP Gold só renderiza se NÃO for criadora (apenas para homens) */}
+      {!isCreator && (
+        <section className="mt-6 overflow-hidden rounded-3xl border border-gold/30 bg-gradient-to-br from-surface to-surface-2 p-5">
+          <div className="flex items-center gap-2">
+            <Crown className="size-5 text-gold" fill="currentColor" />
+            <h2 className="text-base font-extrabold">
+              Plano <span className="text-gradient-gold">HotMatch VIP Gold</span>
+            </h2>
+          </div>
+          <ul className="mt-3 space-y-2">
+            {[
+              "Super Likes ilimitados todos os dias",
+              "Veja quem curtiu seu perfil",
+              "20% de desconto em todos os mimos",
+              "Destaque dourado no Descobrir",
+            ].map((b) => (
+              <li key={b} className="flex items-center gap-2 text-sm text-foreground/85">
+                <Check className="size-4 shrink-0 text-gold" />
+                {b}
+              </li>
+            ))}
+          </ul>
+          <button
+            onClick={() => {
+              actions.activateVip();
+              toast("Bem-vindo ao VIP Gold 👑");
+            }}
+            disabled={vip}
+            className="tap-scale mt-4 w-full rounded-full bg-gradient-gold py-3.5 text-sm font-extrabold text-gold-foreground shadow-gold disabled:opacity-60"
+          >
+            {vip ? "VIP Gold ativo" : "Assinar por R$ 39,90/mês"}
+          </button>
+        </section>
+      )}
 
       {checkout && (
         <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/70 backdrop-blur-sm">
@@ -343,4 +350,4 @@ function Stat({ icon, label, value }: { icon: React.ReactNode; label: string; va
       <p className="text-[11px] text-muted-foreground">{label}</p>
     </div>
   );
-                    }
+}
