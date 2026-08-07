@@ -7,6 +7,7 @@ import {
   Crown,
   Sparkles,
   TrendingUp,
+  Wallet,
   Zap,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -34,14 +35,47 @@ export const Route = createFileRoute("/loja")({
   component: Store,
 });
 
+type LojaTab = "moedas" | "carteira";
+
 function Store() {
   const { gender } = useAppState();
+  const isCreator = gender === "female";
+  const [activeTab, setActiveTab] = useState<LojaTab>("moedas");
 
   return (
     <div className="min-h-screen pb-32">
-      <TopBar title={gender === "female" ? "Carteira Criadora" : "Loja & VIP"} />
+      <TopBar title={isCreator && activeTab === "carteira" ? "Carteira Criadora" : "Loja & VIP"} />
+
+      {/* Se for criadora/mulher, exibe o seletor de abas no topo */}
+      {isCreator && (
+        <div className="sticky top-[3.5rem] z-30 mx-4 mb-4 flex rounded-full border border-border bg-surface p-1">
+          <button
+            onClick={() => setActiveTab("moedas")}
+            className={`flex flex-1 items-center justify-center gap-2 rounded-full py-2 text-xs font-bold transition-all ${
+              activeTab === "moedas"
+                ? "bg-gradient-hot text-primary-foreground shadow-hot"
+                : "text-muted-foreground"
+            }`}
+          >
+            <Coins className="size-4" />
+            Comprar Moedas
+          </button>
+          <button
+            onClick={() => setActiveTab("carteira")}
+            className={`flex flex-1 items-center justify-center gap-2 rounded-full py-2 text-xs font-bold transition-all ${
+              activeTab === "carteira"
+                ? "bg-gradient-hot text-primary-foreground shadow-hot"
+                : "text-muted-foreground"
+            }`}
+          >
+            <Wallet className="size-4" />
+            Carteira Criadora
+          </button>
+        </div>
+      )}
+
       <div className="px-4">
-        {gender === "female" ? <CreatorView /> : <BuyerView />}
+        {!isCreator || activeTab === "moedas" ? <BuyerView /> : <CreatorView />}
       </div>
     </div>
   );
@@ -309,4 +343,4 @@ function Stat({ icon, label, value }: { icon: React.ReactNode; label: string; va
       <p className="text-[11px] text-muted-foreground">{label}</p>
     </div>
   );
-}
+                    }
