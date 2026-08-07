@@ -151,14 +151,20 @@ function EmptyFeed({ tab }: { tab: FeedTab }) {
         <UserPlus className="size-7 text-muted-foreground" />
       </div>
       {tab === "following" ? (
-        <><p className="text-sm font-semibold">Você ainda não segue nenhuma criadora</p>
-        <p className="max-w-xs text-xs text-muted-foreground">Siga criadoras no feed geral para ver os posts delas aqui.</p></>
+        <>
+          <p className="text-sm font-semibold">Você ainda não segue nenhuma criadora</p>
+          <p className="max-w-xs text-xs text-muted-foreground">Siga criadoras no feed geral para ver os posts delas aqui.</p>
+        </>
       ) : tab === "meus" ? (
-        <><p className="text-sm font-semibold">Você ainda não publicou nada</p>
-        <p className="max-w-xs text-xs text-muted-foreground">Toque em "Postar Mídia VIP" para publicar seu primeiro conteúdo.</p></>
+        <>
+          <p className="text-sm font-semibold">Você ainda não publicou nada</p>
+          <p className="max-w-xs text-xs text-muted-foreground">Toque em Postar Mídia VIP para publicar seu primeiro conteúdo.</p>
+        </>
       ) : (
-        <><p className="text-sm font-semibold">Nenhum post disponível ainda</p>
-        <p className="max-w-xs text-xs text-muted-foreground">Seja a primeira criadora a postar conteúdo exclusivo!</p></>
+        <>
+          <p className="text-sm font-semibold">Nenhum post disponível ainda</p>
+          <p className="max-w-xs text-xs text-muted-foreground">Seja a primeira criadora a postar conteúdo exclusivo!</p>
+        </>
       )}
     </div>
   );
@@ -183,8 +189,6 @@ function PostCard({ post, activeTab, liked, onLike, onDelete }: { post: RichPost
   const { unlocked, followed, profileId } = useAppState();
   const isOwner = profileId === post.author_id;
   
-  // Se for o dono do post, bloqueia apenas na aba "Feed Geral". Na aba "Meus Posts", exibe liberado.
-  // Se for outro usuário, segue o comportamento padrão de bloqueio por moedas.
   const isLocked = post.is_locked && !unlocked.includes(post.id) && (!isOwner || activeTab === "geral");
   const isFollowing = followed.includes(post.author_id);
 
@@ -318,7 +322,7 @@ function PostModal({ onClose, profileId, onPosted }: {
   const [saving, setSaving] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  inputRef = useRef<HTMLInputElement>(null);
 
   function onFilePick(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
@@ -447,4 +451,5 @@ function PostModal({ onClose, profileId, onPosted }: {
         <input type="range" min={0} max={300} step={10} value={price} onChange={(e) => setPrice(Number(e.target.value))} className="mt-2 w-full accent-[oklch(0.86_0.16_92)]" />
         <div className="mt-5 flex gap-3">
           <button onClick={onClose} className="tap-scale flex-1 rounded-full border border-border bg-surface-2 py-3 text-sm font-semibold">Cancelar</button>
-          <button onClick={publish} disabled={saving || !file} className="tap-scale
+          <button onClick={publish} disabled={saving || !file} className="tap-scale flex-[1.4] rounded-full bg-gradient-gold py-3 text-sm font-bold text-gold-foreground shadow-gold disabled:opacity-50">
+    
