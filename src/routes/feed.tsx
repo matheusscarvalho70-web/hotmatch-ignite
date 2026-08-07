@@ -116,6 +116,7 @@ function Feed() {
         ) : (
           displayPosts.map((p) => (
             <PostCard key={p.id} post={p}
+              activeTab={activeTab}
               liked={likedIds.includes(p.id)}
               onLike={() => setLikedIds((ids) => ids.includes(p.id) ? ids.filter((x) => x !== p.id) : [...ids, p.id])}
               onDelete={() => handleDeletePost(p.id)}
@@ -178,11 +179,14 @@ function PostSkeleton() {
   );
 }
 
-function PostCard({ post, liked, onLike, onDelete }: { post: RichPost; liked: boolean; onLike: () => void; onDelete: () => void }) {
+function PostCard({ post, activeTab, liked, onLike, onDelete }: { post: RichPost; activeTab: FeedTab; liked: boolean; onLike: () => void; onDelete: () => void }) {
   const { unlocked, followed, profileId } = useAppState();
-  const isLocked = post.is_locked && !unlocked.includes(post.id);
-  const isFollowing = followed.includes(post.author_id);
   const isOwner = profileId === post.author_id;
+  
+  // Se for o dono do post, bloqueia apenas na aba "Feed Geral". Na aba "Meus Posts", exibe liberado.
+  // Se for outro usuário, segue o comportamento padrão de bloqueio por moedas.
+  const isLocked = post.is_locked && !unlocked.includes(post.id) && (!isOwner || activeTab === "geral");
+  const isFollowing = followed.includes(post.author_id);
 
   const relTime = (() => {
     const s = Math.floor((Date.now() - new Date(post.created_at).getTime()) / 1000);
@@ -272,7 +276,13 @@ function PostCard({ post, liked, onLike, onDelete }: { post: RichPost; liked: bo
             </span>
             <p className="text-sm font-semibold text-white">Conteúdo VIP bloqueado</p>
             <button
-              onClick={() => { if (actions.unlock(post.id, post.coin_price)) toast("Mídia desbloqueada 🔓"); else toast.error("Saldo insuficiente. Recarregue na Loja."); }}
+              onClick={() => {
+                if (isOwner) {
+                  toast.info("Este é o seu próprio post!");
+                  return;
+                }
+                if (actions.unlock(post.id, post.coin_price)) toast("Mídia desbloqueada 🔓"); else toast.error("Saldo insuficiente. Recarregue na Loja.");
+              }}
               className="tap-scale flex items-center gap-2 rounded-full bg-gradient-gold px-5 py-3 shadow-gold">
               <Coins className="size-4 text-gold-foreground" />
               <span className="text-sm font-bold text-gold-foreground">Desbloquear por {post.coin_price} moedas</span>
@@ -437,12 +447,4 @@ function PostModal({ onClose, profileId, onPosted }: {
         <input type="range" min={0} max={300} step={10} value={price} onChange={(e) => setPrice(Number(e.target.value))} className="mt-2 w-full accent-[oklch(0.86_0.16_92)]" />
         <div className="mt-5 flex gap-3">
           <button onClick={onClose} className="tap-scale flex-1 rounded-full border border-border bg-surface-2 py-3 text-sm font-semibold">Cancelar</button>
-          <button onClick={publish} disabled={saving || !file} className="tap-scale flex-[1.4] rounded-full bg-gradient-gold py-3 text-sm font-bold text-gold-foreground shadow-gold disabled:opacity-50">
-            {saving ? "Publicando..." : "Publicar agora"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-        }
-      
+          <button onClick={publish} disabled={saving || !file} className="tap-scale
