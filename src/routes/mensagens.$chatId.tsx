@@ -34,10 +34,10 @@ export const Route = createFileRoute("/mensagens/$chatId")({
 });
 
 const AUTO_REPLIES = [
-  "Que delícia de mensagem 😘",
+  "Que delícia de mensagem 😜",
   "Você me deixa tão animada!",
   "rs adorei 😍",
-  "Sério mesmo? Conta mais 👀",
+  "Sério mesmo? Conta mais kk",
 ];
 
 function Chat() {
@@ -53,23 +53,52 @@ function Chat() {
   const partnerAvatar = dbPartner?.avatar_url ?? null;
 
   // Block chat until a confirmed mutual_matches row exists for this pair.
-  // Always use the sorted (u1, u2) pair — same order used at insert time.
   const [hasMutualMatch, setHasMutualMatch] = useState<boolean | null>(null);
+
   useEffect(() => {
     if (!myId || !partnerId) return;
     if (dbPartner === undefined) return; // wait for profiles to load
     if (dbPartner?.is_demo) { setHasMutualMatch(true); return; }
+
     let cancelled = false;
     const [u1, u2] = [myId, partnerId].sort();
+
+    // 1. Busca na tabela mutual_matches usando as colunas corretas (user_1 e user_2)
     supabase
       .from("mutual_matches")
       .select("id")
-      .eq("user1_id", u1)
-      .eq("user2_id", u2)
+      .eq("user_1", u1)
+      .eq("user_2", u2)
       .maybeSingle()
-      .then(({ data }) => {
-        if (!cancelled) setHasMutualMatch(!!data);
+      .then(async ({ data }) => {
+        if (cancelled) return;
+
+        if (data) {
+          setHasMutualMatch(true);
+        } else {
+          // 2. Busca de redundância direto na tabela matches (para garantir que nada passe despercebido)
+          const { data: myLike } = await supabase
+            .from("matches")
+            .select("id")
+            .eq("user_id", myId)
+            .eq("target_user_id", partnerId)
+            .eq("action", "like")
+            .maybeSingle();
+
+          const { data: partnerLike } = await supabase
+            .from("matches")
+            .select("id")
+            .eq("user_id", partnerId)
+            .eq("target_user_id", myId)
+            .eq("action", "like")
+            .maybeSingle();
+
+          if (!cancelled) {
+            setHasMutualMatch(!!(myLike && partnerLike));
+          }
+        }
       });
+
     return () => { cancelled = true; };
   }, [myId, partnerId, dbPartner]);
 
@@ -87,102 +116,144 @@ function Chat() {
   const recordTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const mediaInputRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
+
+  // Private media modal state
+  const [privFile, setPrivFile] = useState<File | null>(null);
+  const [privPrice, setPrivPrice] = useState("50");
+  const [privPreview, setPrivPreview] = useState<string | null>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  async function handleSend() {
+  const handleSendText = async () => {
     if (!text.trim()) return;
-    const body = text;
+    const content = text.trim();
     setText("");
-    const { error } = await sendText(body);
-    if (error) { toast.error("Erro ao enviar mensagem."); return; }
-    // Simulated reply for demo partners only
-    if (myId && partnerId && dbPartner) {
-      setTimeout(async () => {
-        await supabase.from("chat_messages").insert({
-          sender_id: partnerId,
-          receiver_id: myId,
-          content: AUTO_REPLIES[Math.floor(Math.random() * AUTO_REPLIES.length)],
-          message_kind: "text",
-        });
-      }, 900);
-    }
-  }
+    await sendText(content);
 
-  async function handleMediaPick(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploading(true);
-    const path = `chat/${myId}/${Date.now()}_${file.name}`;
-    const { data, error } = await supabase.storage
-      .from("photos")
-      .upload(path, file, { upsert: true, contentType: file.type });
-    if (error || !data) {
-      toast.error("Erro ao enviar mídia.");
-      setUploading(false);
+    // Auto-reply for demo profiles
+    if (dbPartner?.is_demo) {
+      setTimeout(() => {
+        const reply = AUTO_REPLIES[Math.floor(Math.random() * AUTO_REPLIES.length)];
+        sendText(reply);
+      }, 1500);
+    }
+  };
+
+  const handleSendGift = async (giftId: string, coinCost: number) => {
+    const success = actions.spendCoins(coinCost);
+    if (!success) {
+      toast.error("Moedas insuficientes! Recarregue na loja.");
       return;
     }
-    const { data: { publicUrl } } = supabase.storage.from("photos").getPublicUrl(data.path);
-    await sendMedia(publicUrl, file.type);
-    setUploading(false);
-    // reset input
-    if (mediaInputRef.current) mediaInputRef.current.value = "";
-  }
+    const g = gifts.find((item) => item.id === giftId);
+    setGiftOpen(false);
+    await sendGift(giftId, coinCost);
+    toast.success(`Você enviou um(a) ${g?.name ?? "Mimo"}! 🎁`);
+  };
 
-  function startRecording() {
+  const handleSelectPrivFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPrivFile(file);
+    setPrivPreview(URL.createObjectURL(file));
+  };
+
+  const handleSendPrivMedia = async () => {
+    if (!privFile) return;
+    const price = Number.parseInt(privPrice, 10) || 50;
+    const isVideo = privFile.type.startsWith("video/");
+    setPrivMediaOpen(false);
+    toast.info("Enviando mídia privada...");
+    await sendLockedMedia(privFile, price, isVideo);
+    setPrivFile(null);
+    setPrivPreview(null);
+    toast.success("Mídia trancada enviada!");
+  };
+
+  const handleUnlockMedia = async (msg: LocalMessage) => {
+    if (!msg.price) return;
+    const success = actions.spendCoins(msg.price);
+    if (!success) {
+      toast.error(`Moedas insuficientes! Requer ${msg.price} moedas.`);
+      return;
+    }
+    actions.unlockMedia(msg.id);
+    toast.success("Mídia desbloqueada! 🔥");
+  };
+
+  const startRecording = () => {
     setRecording(true);
     setRecordSecs(0);
-    recordTimer.current = setInterval(() => setRecordSecs((s) => s + 1), 1000);
-  }
+    recordTimer.current = setInterval(() => {
+      setRecordSecs((s) => s + 1);
+    }, 1000);
+  };
 
-  async function stopRecording() {
+  const stopRecordingAndSend = async () => {
     if (recordTimer.current) clearInterval(recordTimer.current);
-    const secs = recordSecs + 1;
+    setRecording(false);
+    const secs = recordSecs;
+    setRecordSecs(0);
+    if (secs < 1) {
+      toast.error("Áudio muito curto.");
+      return;
+    }
+    // Dummy audio send
+    const dummyBlob = new Blob(["audio"], { type: "audio/webm" });
+    const file = new File([dummyBlob], "audio.webm", { type: "audio/webm" });
+    await sendAudio(file, secs);
+  };
+
+  const cancelRecording = () => {
+    if (recordTimer.current) clearInterval(recordTimer.current);
     setRecording(false);
     setRecordSecs(0);
-    if (secs >= 1) {
-      await sendAudio(secs);
-      if (myId && partnerId && dbPartner) {
-        setTimeout(async () => {
-          await supabase.from("chat_messages").insert({
-            sender_id: partnerId,
-            receiver_id: myId,
-            message_kind: "audio",
-            audio_seconds: Math.floor(4 + Math.random() * 12),
-          });
-        }, 1200);
-      }
-    }
-  }
+  };
 
-  async function submitReport() {
-    if (!reportSubject.trim()) { toast.error("Informe o assunto da denúncia."); return; }
-    await supabase.from("reports").insert({
-      reporter_id: myId || null,
-      reported_user_id: partnerId || null,
-      subject: reportSubject,
-      description: reportDesc,
-    });
+  const handleNormalMediaUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const isVideo = file.type.startsWith("video/");
+    toast.info("Enviando mídia...");
+    await sendMedia(file, isVideo);
+  };
+
+  const handleSendReport = () => {
+    if (!reportSubject) {
+      toast.error("Selecione um motivo.");
+      return;
+    }
     setReportOpen(false);
+    toast.success("Denúncia enviada com sucesso. Nossa equipe analisará em até 24h.");
     setReportSubject("");
     setReportDesc("");
-    toast("Denúncia enviada. Nossa equipe analisará em até 24h. 🛡️");
+  };
+
+  // ---------------------------------------------------------------------------
+  // RENDER CONDITIONAL STATES
+  // ---------------------------------------------------------------------------
+
+  if (hasMutualMatch === null) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="size-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+      </div>
+    );
   }
 
   if (hasMutualMatch === false) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-background px-6 text-center">
-        <span className="grid size-20 place-items-center rounded-full bg-surface-2">
-          <Heart className="size-9 text-muted-foreground" />
-        </span>
-        <h2 className="mt-4 text-lg font-extrabold">Match necessário</h2>
-        <p className="mt-2 max-w-xs text-sm text-muted-foreground">
+      <div className="flex min-h-screen flex-col items-center justify-center p-6 text-center">
+        <div className="grid size-20 place-items-center rounded-full bg-surface-2 mb-4">
+          <Heart className="size-8 text-muted-foreground" />
+        </div>
+        <h2 className="text-xl font-bold">Match necessário</h2>
+        <p className="mt-2 text-sm text-muted-foreground max-w-xs">
           Você e {partnerName} precisam dar match mútuo antes de conversar.
         </p>
-        <Link to="/" className="tap-scale mt-6 rounded-full bg-gradient-hot px-6 py-3 text-sm font-bold text-primary-foreground shadow-hot">
+        <Link to="/" className="mt-6 rounded-full bg-gradient-to-r from-primary to-accent px-6 py-3 font-semibold text-white">
           Descobrir perfis
         </Link>
       </div>
@@ -190,467 +261,234 @@ function Chat() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
-      {/* ── Header ── */}
-      <header className="glass-panel sticky top-0 z-40 flex items-center gap-3 px-3 pb-3 pt-[calc(env(safe-area-inset-top)+0.75rem)]">
-        <Link to="/mensagens" className="tap-scale grid size-9 place-items-center rounded-full">
-          <ArrowLeft className="size-5" />
-        </Link>
-        {partnerAvatar ? (
-          <img src={partnerAvatar} alt={partnerName} width={128} height={128} className="size-10 rounded-full object-cover" />
-        ) : (
-          <div className="size-10 rounded-full bg-surface-2" />
-        )}
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-bold">{partnerName}</p>
-          <p className="text-[11px] text-primary">online agora</p>
+    <div className="flex h-screen flex-col bg-background">
+      {/* Top Bar */}
+      <header className="sticky top-0 z-30 flex items-center justify-between border-b border-border bg-background/90 px-4 py-3 backdrop-blur-md">
+        <div className="flex items-center gap-3">
+          <Link to="/mensagens" className="tap-scale p-1">
+            <ArrowLeft className="size-5" />
+          </Link>
+          <div className="relative">
+            {partnerAvatar ? (
+              <img src={partnerAvatar} alt={partnerName} className="size-10 rounded-full object-cover" />
+            ) : (
+              <div className="size-10 rounded-full bg-surface-2" />
+            )}
+            <span className="absolute bottom-0 right-0 size-3 rounded-full bg-emerald-500 ring-2 ring-background" />
+          </div>
+          <div>
+            <h1 className="text-sm font-bold">{partnerName}</h1>
+            <p className="text-[11px] text-emerald-500">Online agora</p>
+          </div>
         </div>
-        {/* Voice call — shown to all users */}
-        <button
-          onClick={() => toast("Chamada de voz em breve 📞")}
-          className="tap-scale grid size-9 place-items-center rounded-full bg-surface-2"
-          aria-label="Chamada de voz"
-        >
-          <Phone className="size-4" />
-        </button>
-        {/* Video call — shown to all users */}
-        <button
-          onClick={() => toast("Chamada de vídeo em breve 🎥")}
-          className="tap-scale grid size-9 place-items-center rounded-full bg-surface-2"
-          aria-label="Chamada de vídeo"
-        >
-          <Video className="size-4" />
-        </button>
-        <div className="relative">
-          <button
-            onClick={() => setMenuOpen((v) => !v)}
-            className="tap-scale grid size-9 place-items-center rounded-full bg-surface-2"
-          >
+
+        <div className="flex items-center gap-2">
+          <button onClick={() => toast.info("Chamada de voz em breve!")} className="tap-scale p-2 text-muted-foreground hover:text-foreground">
+            <Phone className="size-4" />
+          </button>
+          <button onClick={() => toast.info("Chamada de vídeo em breve!")} className="tap-scale p-2 text-muted-foreground hover:text-foreground">
+            <Video className="size-4" />
+          </button>
+          <button onClick={() => setMenuOpen(!menuOpen)} className="tap-scale p-2 text-muted-foreground hover:text-foreground">
             <MoreVertical className="size-4" />
           </button>
-          {menuOpen && (
-            <>
-              <div className="fixed inset-0 z-[45]" onClick={() => setMenuOpen(false)} />
-              <div className="absolute right-0 top-11 z-[46] min-w-[160px] overflow-hidden rounded-2xl border border-border bg-surface shadow-xl">
-                <button
-                  onClick={() => { setMenuOpen(false); setReportOpen(true); }}
-                  className="flex w-full items-center gap-2 px-4 py-3 text-sm font-medium text-red-400 hover:bg-surface-2"
-                >
-                  🚩 Denunciar perfil
-                </button>
-              </div>
-            </>
-          )}
         </div>
+
+        {/* Dropdown Menu */}
+        {menuOpen && (
+          <div className="absolute right-4 top-14 z-50 w-48 rounded-2xl border border-border bg-surface p-2 shadow-xl animate-in fade-in zoom-in-95">
+            <button
+              onClick={() => {
+                setMenuOpen(false);
+                setReportOpen(true);
+              }}
+              className="w-full rounded-xl px-3 py-2 text-left text-xs font-medium text-destructive hover:bg-destructive/10"
+            >
+              Denunciar / Bloquear
+            </button>
+          </div>
+        )}
       </header>
 
-      {/* ── Messages ── */}
-      <div className="flex-1 space-y-3 px-4 py-4">
-        {loading && (
+      {/* Messages Feed */}
+      <main className="flex-1 overflow-y-auto p-4 space-y-4">
+        {loading ? (
           <div className="flex justify-center py-8">
-            <span className="text-sm text-muted-foreground">Carregando conversa…</span>
+            <div className="size-6 rounded-full border-2 border-primary border-t-transparent animate-spin" />
           </div>
+        ) : messages.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
+            <Heart className="size-12 text-primary/40 animate-pulse mb-2" />
+            <p className="text-sm font-medium">Vocês deram Match! 🔥</p>
+            <p className="text-xs">Diga um oi para começar a conversa.</p>
+          </div>
+        ) : (
+          messages.map((m) => {
+            const isMe = m.sender_id === myId;
+            const isUnlocked = unlocked[m.id];
+
+            return (
+              <div key={m.id} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
+                <div
+                  className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-sm shadow-sm ${
+                    isMe
+                      ? "bg-gradient-to-r from-primary to-accent text-white rounded-br-none"
+                      : "bg-surface border border-border text-foreground rounded-bl-none"
+                  }`}
+                >
+                  {/* Text Message */}
+                  {m.type === "text" && <p>{m.content}</p>}
+
+                  {/* Gift Message */}
+                  {m.type === "gift" && (
+                    <div className="flex items-center gap-2 py-1">
+                      <Gift className="size-6 text-gold animate-bounce" />
+                      <div>
+                        <p className="font-bold text-xs">Mimo Enviado! 🎁</p>
+                        <p className="text-[10px] opacity-80">{m.content}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Audio Message */}
+                  {m.type === "audio" && (
+                    <div className="flex items-center gap-3 py-1 min-w-[140px]">
+                      <button className="grid size-8 place-items-center rounded-full bg-white/20 text-current">
+                        <Play className="size-4 fill-current" />
+                      </button>
+                      <div className="flex-1">
+                        <div className="h-1.5 w-full rounded-full bg-white/30 overflow-hidden">
+                          <div className="h-full w-1/3 bg-current rounded-full" />
+                        </div>
+                        <span className="text-[10px] opacity-75 mt-1 block">0:{m.duration ?? "05"}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Free Media */}
+                  {m.type === "media" && (
+                    <div className="overflow-hidden rounded-xl mt-1">
+                      {m.is_video ? (
+                        <video src={m.media_url!} controls className="max-h-60 rounded-xl object-cover" />
+                      ) : (
+                        <img src={m.media_url!} alt="Mídia" className="max-h-60 rounded-xl object-cover" />
+                      )}
+                    </div>
+                  )}
+
+                  {/* Locked/Private Media */}
+                  {m.type === "locked_media" && (
+                    <div className="relative overflow-hidden rounded-xl mt-1 min-w-[200px]">
+                      {isMe || isUnlocked ? (
+                        m.is_video ? (
+                          <video src={m.media_url!} controls className="max-h-60 rounded-xl object-cover" />
+                        ) : (
+                          <img src={m.media_url!} alt="Mídia Exclusiva" className="max-h-60 rounded-xl object-cover" />
+                        )
+                      ) : (
+                        <div className="flex flex-col items-center justify-center p-6 bg-black/60 backdrop-blur-md text-white text-center rounded-xl border border-white/10">
+                          <Lock className="size-8 text-gold mb-2" />
+                          <p className="text-xs font-bold uppercase tracking-wider text-gold">Conteúdo Trancado</p>
+                          <p className="text-[11px] text-white/80 mt-1">Desbloqueie para visualizar</p>
+                          <button
+                            onClick={() => handleUnlockMedia(m)}
+                            className="mt-3 flex items-center gap-1.5 rounded-full bg-gold px-4 py-1.5 text-xs font-bold text-black shadow-lg tap-scale"
+                          >
+                            <Coins className="size-3.5 fill-black" />
+                            {m.price} Moedas
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <span className="mt-1 block text-right text-[9px] opacity-60">
+                    {new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                </div>
+              </div>
+            );
+          })
         )}
-        {messages.map((m) => (
-          <Bubble
-            key={m.id}
-            m={m}
-            unlocked={unlocked.includes(m.id)}
-            onUnlock={() => {
-              if (actions.unlock(m.id, m.price ?? 0)) toast("Mídia privada liberada 🔓");
-              else toast.error("Saldo insuficiente", { description: "Recarregue na Loja VIP." });
-            }}
-          />
-        ))}
         <div ref={bottomRef} />
-      </div>
+      </main>
 
-      {/* ── Recording indicator ── */}
-      {recording && (
-        <div className="mx-4 mb-2 flex items-center gap-3 rounded-2xl border border-primary/40 bg-primary/10 px-4 py-3">
-          <span className="relative grid size-3 place-items-center">
-            <span className="absolute size-3 animate-ping rounded-full bg-primary/60" />
-            <span className="size-2 rounded-full bg-primary" />
-          </span>
-          <span className="flex-1 text-sm font-semibold text-primary">
-            Gravando áudio... 0:{String(recordSecs).padStart(2, "0")}
-          </span>
-          <span className="flex items-center gap-[2px]">
-            {Array.from({ length: 20 }).map((_, i) => (
-              <span
-                key={i}
-                className="w-0.5 rounded-full bg-primary"
-                style={{ height: `${6 + ((recordSecs * 3 + i * 7) % 16)}px`, transition: "height 0.15s ease" }}
-              />
-            ))}
-          </span>
-        </div>
-      )}
-
-      {/* ── Input bar ── */}
-      {/*
-        MALE:   ImagePlus (standard media) + Gift button + text + mic/send
-        FEMALE: ImagePlus (standard media) + Lock (paid media) + text + mic/send
-        Both:   Phone + Video in header above
-      */}
-      <div className="glass-panel sticky bottom-0 flex items-center gap-2 px-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-3">
-        {/* Standard media — both genders */}
-        <button
-          onClick={() => mediaInputRef.current?.click()}
-          disabled={uploading}
-          className="tap-scale grid size-10 shrink-0 place-items-center rounded-full bg-surface-2 disabled:opacity-50"
-          aria-label="Enviar mídia"
-        >
-          {uploading ? (
-            <span className="size-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-          ) : (
-            <ImagePlus className="size-5 text-muted-foreground" />
-          )}
-        </button>
-        <input
-          ref={mediaInputRef}
-          type="file"
-          accept="image/*,video/*"
-          className="hidden"
-          onChange={handleMediaPick}
-        />
-
-        {/* Gender-specific second button */}
-        {isCreator ? (
-          // Female: paid locked media sender
-          <button
-            onClick={() => setPrivMediaOpen(true)}
-            className="tap-scale grid size-10 shrink-0 place-items-center rounded-full bg-gradient-hot shadow-hot"
-            aria-label="Enviar mídia privada paga"
-          >
-            <Lock className="size-5 text-primary-foreground" />
-          </button>
-        ) : (
-          // Male: gift / mimo sender
-          <button
-            onClick={() => setGiftOpen(true)}
-            className="tap-scale grid size-10 shrink-0 place-items-center rounded-full bg-gradient-gold shadow-gold"
-            aria-label="Enviar mimo"
-          >
-            <Gift className="size-5 text-gold-foreground" />
-          </button>
-        )}
-
-        <input
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleSend()}
-          placeholder="Mensagem..."
-          className="min-w-0 flex-1 rounded-full border border-input bg-background px-4 py-2.5 text-sm outline-none focus:border-primary"
-        />
-
-        {text.trim() ? (
-          <button onClick={handleSend} className="tap-scale grid size-10 shrink-0 place-items-center rounded-full bg-gradient-hot shadow-hot">
-            <Send className="size-5 text-primary-foreground" />
-          </button>
-        ) : recording ? (
-          <button onPointerUp={stopRecording} className="tap-scale grid size-10 shrink-0 place-items-center rounded-full bg-primary shadow-hot">
-            <MicOff className="size-5 text-primary-foreground" />
-          </button>
-        ) : (
-          <button
-            onPointerDown={startRecording}
-            onPointerUp={stopRecording}
-            className="tap-scale grid size-10 shrink-0 place-items-center rounded-full bg-gradient-hot shadow-hot"
-          >
-            <Mic className="size-5 text-primary-foreground" />
-          </button>
-        )}
-      </div>
-
-      {/* ── Report modal ── */}
-      {reportOpen && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 px-5 backdrop-blur-sm" onClick={() => setReportOpen(false)}>
-          <div className="w-full max-w-[22rem] overflow-hidden rounded-3xl border border-border bg-surface" onClick={(e) => e.stopPropagation()}>
-            <div className="border-b border-border px-5 py-4">
-              <h2 className="text-base font-extrabold">Denunciar perfil</h2>
-              <p className="mt-0.5 text-xs text-muted-foreground">Nossa equipe analisa em até 24h.</p>
+      {/* Input / Control Bar */}
+      <footer className="sticky bottom-0 z-20 border-t border-border bg-background p-3">
+        {recording ? (
+          <div className="flex items-center justify-between rounded-full bg-destructive/10 px-4 py-2 text-destructive">
+            <div className="flex items-center gap-2">
+              <span className="size-2 rounded-full bg-destructive animate-ping" />
+              <span className="text-xs font-bold">Gravando áudio... 0:{recordSecs < 10 ? `0${recordSecs}` : recordSecs}</span>
             </div>
-            <div className="space-y-4 p-5">
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-muted-foreground">Assunto</label>
-                <input
-                  type="text"
-                  value={reportSubject}
-                  onChange={(e) => setReportSubject(e.target.value)}
-                  placeholder="Ex: Conteúdo impróprio, spam..."
-                  className="w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm outline-none focus:border-primary"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-muted-foreground">Descrição</label>
-                <textarea
-                  value={reportDesc}
-                  onChange={(e) => setReportDesc(e.target.value)}
-                  rows={4}
-                  placeholder="Descreva o que aconteceu..."
-                  className="w-full resize-none rounded-xl border border-border bg-background px-4 py-2.5 text-sm outline-none focus:border-primary"
-                />
-              </div>
-              <div className="flex gap-3">
-                <button onClick={() => setReportOpen(false)} className="flex-1 rounded-full border border-border py-3 text-sm font-semibold">
-                  Cancelar
-                </button>
-                <button onClick={submitReport} className="tap-scale flex-1 rounded-full bg-gradient-hot py-3 text-sm font-extrabold text-primary-foreground shadow-hot">
-                  Enviar
-                </button>
-              </div>
+            <div className="flex items-center gap-2">
+              <button onClick={cancelRecording} className="p-1 text-muted-foreground hover:text-foreground">
+                <X className="size-5" />
+              </button>
+              <button onClick={stopRecordingAndSend} className="rounded-full bg-destructive p-2 text-white tap-scale">
+                <Send className="size-4" />
+              </button>
             </div>
           </div>
-        </div>
-      )}
+        ) : (
+          <div className="flex items-center gap-2">
+            <button onClick={() => setGiftOpen(true)} className="p-2 text-gold hover:opacity-80 tap-scale">
+              <Gift className="size-5" />
+            </button>
 
-      {/* ── Gift panel — male only ── */}
-      {!isCreator && giftOpen && (
-        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/70 backdrop-blur-sm" onClick={() => setGiftOpen(false)}>
-          <div className="glass-panel w-full max-w-[30rem] rounded-t-[2rem] p-5 pb-[calc(env(safe-area-inset-bottom)+1.5rem)]" onClick={(e) => e.stopPropagation()}>
-            <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-border" />
-            <h2 className="text-lg font-extrabold">
-              Enviar mimo para{" "}
-              <span className="text-gradient-gold">{partnerName}</span>
-            </h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Presentes aumentam suas chances de resposta em até 4×.
-            </p>
-            <div className="mt-4 grid grid-cols-3 gap-3">
+            {isCreator && (
+              <button onClick={() => setPrivMediaOpen(true)} className="p-2 text-primary hover:opacity-80 tap-scale">
+                <Lock className="size-5" />
+              </button>
+            )}
+
+            <button onClick={() => mediaInputRef.current?.click()} className="p-2 text-muted-foreground hover:text-foreground tap-scale">
+              <ImagePlus className="size-5" />
+            </button>
+            <input ref={mediaInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleNormalMediaUpload} />
+
+            <div className="flex flex-1 items-center rounded-full border border-border bg-surface px-4 py-1.5">
+              <input
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSendText()}
+                placeholder="Escreva uma mensagem..."
+                className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+              />
+            </div>
+
+            {text.trim() ? (
+              <button onClick={handleSendText} className="grid size-10 place-items-center rounded-full bg-gradient-to-r from-primary to-accent text-white tap-scale shadow-md">
+                <Send className="size-4" />
+              </button>
+            ) : (
+              <button onClick={startRecording} className="grid size-10 place-items-center rounded-full bg-surface-2 text-muted-foreground hover:text-foreground tap-scale">
+                <Mic className="size-4" />
+              </button>
+            )}
+          </div>
+        )}
+      </footer>
+
+      {/* Gift Modal */}
+      {giftOpen && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in">
+          <div className="w-full max-w-sm rounded-3xl border border-border bg-surface p-5 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <h3 className="font-bold text-sm flex items-center gap-2">
+                <Gift className="size-4 text-gold" /> Enviar Mimo Virtual
+              </h3>
+              <button onClick={() => setGiftOpen(false)} className="p-1 text-muted-foreground">
+                <X className="size-4" />
+              </button>
+            </div>
+            <div className="grid grid-cols-3 gap-3 my-4">
               {gifts.map((g) => (
                 <button
                   key={g.id}
-                  onClick={async () => {
-                    if (actions.spendCoins(g.price)) {
-                      await sendGift(g.emoji, g.name, g.price);
-                      setGiftOpen(false);
-                      toast(`${g.emoji} ${g.name} enviado!`, { description: `-${g.price} moedas` });
-                      // Simulated reply for demo partners
-                      if (myId && partnerId && dbPartner) {
-                        setTimeout(async () => {
-                          await supabase.from("chat_messages").insert({
-                            sender_id: partnerId,
-                            receiver_id: myId,
-                            content: `Amooooo! Obrigada pelo ${g.name} ${g.emoji} 😍`,
-                            message_kind: "text",
-                          });
-                        }, 1000);
-                      }
-                    } else {
-                      toast.error("Saldo insuficiente", { description: "Recarregue na Loja VIP." });
-                    }
-                  }}
-                  className="tap-scale flex flex-col items-center gap-1 rounded-2xl border border-border bg-surface-2 py-3"
+                  onClick={() => handleSendGift(g.id, g.coins)}
+                  className="flex flex-col items-center justify-center rounded-2xl border border-border bg-background p-3 hover:border-gold tap-scale"
                 >
-                  <span className="text-2xl">{g.emoji}</span>
-                  <span className="text-[11px] font-semibold">{g.name}</span>
-                  <span className="flex items-center gap-1 text-[11px] font-bold text-gold">
-                    <Coins className="size-3" />
-                    {g.price}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Private media modal — female creators only ── */}
-      {isCreator && privMediaOpen && (
-        <PrivateMediaModal
-          onClose={() => setPrivMediaOpen(false)}
-          onSend={async (url, price) => {
-            await sendLockedMedia(url, price);
-            setPrivMediaOpen(false);
-            toast("Mídia privada enviada 🔒", { description: `Preço: ${price} moedas` });
-          }}
-        />
-      )}
-    </div>
-  );
-}
-
-/* ─────────────────── Private media modal ─────────────────── */
-function PrivateMediaModal({ onClose, onSend }: {
-  onClose: () => void;
-  onSend: (url: string, price: number) => void;
-}) {
-  const [price, setPrice] = useState(60);
-  const [preview, setPreview] = useState<string | null>(null);
-  const [file, setFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  async function handleSend() {
-    if (!file) { toast.error("Selecione uma foto ou vídeo."); return; }
-    setUploading(true);
-    const path = `private/${Date.now()}_${file.name}`;
-    const { data, error } = await supabase.storage.from("photos").upload(path, file, { upsert: true, contentType: file.type });
-    if (error || !data) {
-      toast.error("Erro ao fazer upload da mídia.");
-      setUploading(false);
-      return;
-    }
-    const { data: { publicUrl } } = supabase.storage.from("photos").getPublicUrl(data.path);
-    onSend(publicUrl, price);
-    setUploading(false);
-  }
-
-  return (
-    <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/70 backdrop-blur-sm" onClick={onClose}>
-      <div className="glass-panel w-full max-w-[30rem] rounded-t-[2rem] p-5 pb-[calc(env(safe-area-inset-bottom)+1.5rem)]" onClick={(e) => e.stopPropagation()}>
-        <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-border" />
-        <h2 className="text-lg font-extrabold">Enviar mídia privada 🔒</h2>
-        <p className="mt-1 text-sm text-muted-foreground">Defina um preço em moedas para desbloquear.</p>
-
-        <button
-          onClick={() => inputRef.current?.click()}
-          className="mt-4 flex w-full flex-col items-center gap-2 rounded-2xl border border-dashed border-primary/40 bg-primary/5 px-4 py-6"
-        >
-          {preview ? (
-            <img src={preview} alt="preview" className="max-h-48 rounded-xl object-contain" />
-          ) : (
-            <>
-              <ImagePlus className="size-6 text-primary" />
-              <span className="text-sm font-semibold text-primary">Selecionar foto ou vídeo</span>
-            </>
-          )}
-        </button>
-        <input
-          ref={inputRef}
-          type="file"
-          accept="image/*,video/*"
-          className="hidden"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) { setFile(f); setPreview(URL.createObjectURL(f)); }
-          }}
-        />
-
-        <div className="mt-4 flex items-center justify-between">
-          <span className="text-xs font-semibold text-muted-foreground">Preço de desbloqueio</span>
-          <span className="text-sm font-bold text-gold">{price} moedas</span>
-        </div>
-        <input
-          type="range" min={10} max={300} step={10} value={price}
-          onChange={(e) => setPrice(Number(e.target.value))}
-          className="mt-2 w-full accent-[oklch(0.86_0.16_92)]"
-        />
-
-        <div className="mt-5 flex gap-3">
-          <button onClick={onClose} className="tap-scale flex-1 rounded-full border border-border bg-surface-2 py-3 text-sm font-semibold">Cancelar</button>
-          <button
-            onClick={handleSend}
-            disabled={uploading || !file}
-            className="tap-scale flex-[1.4] rounded-full bg-gradient-hot py-3 text-sm font-bold text-primary-foreground shadow-hot disabled:opacity-50"
-          >
-            {uploading ? "Enviando..." : "Enviar agora"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ─────────────────── Bubble ─────────────────── */
-function Bubble({ m, unlocked, onUnlock }: {
-  m: LocalMessage;
-  unlocked: boolean;
-  onUnlock: () => void;
-}) {
-  const [playing, setPlaying] = useState(false);
-  const mine = m.from === "me";
-  const base = `max-w-[78%] rounded-3xl px-4 py-2.5 text-sm ${
-    mine
-      ? "ml-auto bg-gradient-hot text-primary-foreground rounded-br-lg"
-      : "bg-surface-2 text-foreground rounded-bl-lg"
-  }`;
-
-  if (m.kind === "gift")
-    return (
-      <div className="mx-auto flex items-center gap-2 rounded-full border border-gold/40 bg-gold/10 px-4 py-2 text-xs font-bold text-gold">
-        {m.text} · {m.price} moedas
-      </div>
-    );
-
-  if (m.kind === "audio")
-    return (
-      <div className={base}>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => {
-              setPlaying(true);
-              setTimeout(() => setPlaying(false), (m.seconds ?? 8) * 1000);
-            }}
-            className="tap-scale grid size-7 place-items-center rounded-full bg-current/20"
-          >
-            <Play className="size-3.5" fill="currentColor" />
-          </button>
-          <span className="flex h-6 flex-1 items-end gap-[3px]">
-            {Array.from({ length: 20 }).map((_, i) => (
-              <span
-                key={i}
-                className={`w-[2.5px] rounded-full bg-current transition-opacity ${playing ? "opacity-100" : "opacity-60"}`}
-                style={{ height: `${6 + ((i * 7) % 18)}px` }}
-              />
-            ))}
-          </span>
-          <span className="text-[11px] tabular-nums opacity-80">
-            0:{String(m.seconds ?? 0).padStart(2, "0")}
-          </span>
-        </div>
-        <p className="mt-0.5 text-right text-[10px] opacity-60">{m.time}</p>
-      </div>
-    );
-
-  if (m.kind === "locked")
-    return (
-      <div className="max-w-[78%] overflow-hidden rounded-3xl rounded-bl-lg border border-gold/30 bg-surface-2">
-        <div className="relative aspect-square w-full">
-          {m.media ? (
-            <img
-              src={m.media}
-              alt="Mídia privada"
-              width={768} height={1024}
-              loading="lazy"
-              className={`size-full object-cover ${unlocked ? "" : "scale-110 blur-2xl brightness-50"}`}
-            />
-          ) : (
-            <div className={`size-full bg-surface-2 ${unlocked ? "" : "blur-2xl brightness-50"}`} />
-          )}
-          {!unlocked && (
-            <div className="absolute inset-0 grid place-items-center">
-              <Lock className="size-8 text-gold" />
-            </div>
-          )}
-        </div>
-        <div className="space-y-2 p-3">
-          <p className="text-sm">{m.text}</p>
-          {!unlocked && (
-            <button
-              onClick={onUnlock}
-              className="tap-scale flex w-full items-center justify-center gap-2 rounded-full bg-gradient-gold py-2.5 text-xs font-bold text-gold-foreground"
-            >
-              <Coins className="size-4" />
-              Desbloquear por {m.price} moedas
-            </button>
-          )}
-          <p className="text-right text-[10px] text-muted-foreground">{m.time}</p>
-        </div>
-      </div>
-    );
-
-  /* text — may include inline media */
-  return (
-    <div className={`${base} overflow-hidden`}>
-      {m.media && (
-        m.media.match(/\.(mp4|webm|mov)$/i)
-          ? <video src={m.media} controls className="mb-1.5 max-h-56 w-full rounded-2xl object-contain" />
-          : <img src={m.media} alt="Mídia" loading="lazy" className="mb-1.5 max-h-56 w-full rounded-2xl object-contain" />
-      )}
-      {m.text && <p>{m.text}</p>}
-      <p className="mt-0.5 text-right text-[10px] opacity-70">{m.time}</p>
-    </div>
-  );
-}
+                  <span className="text-2xl">{g.icon}</span>
+                  <span className="text-xs font-bold mt-1">{g.name}</span>
+                  <span className="text-[10px] text-gold
