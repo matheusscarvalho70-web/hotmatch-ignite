@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, Coins, Crown, Heart, Lock, MessageCircle, Play, Plus, Send, Upload, UserPlus } from "lucide-react";
+import { Check, Coins, Crown, Heart, Lock, MessageCircle, Plus, Send, Upload, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { haversineKm, useUserLocation } from "@/hooks/use-profiles";
 import { TopBar } from "@/components/hotmatch/TopBar";
@@ -175,6 +175,8 @@ function PostCard({ post, liked, onLike }: { post: RichPost; liked: boolean; onL
     return `há ${Math.floor(s / 86400)} d`;
   })();
 
+  const isVideo = post.media_type === "video" || post.media_type === "vídeo";
+
   return (
     <article className="overflow-hidden rounded-3xl border border-border bg-surface shadow-card-premium">
       <header className="flex items-center gap-3 p-3">
@@ -214,22 +216,34 @@ function PostCard({ post, liked, onLike }: { post: RichPost; liked: boolean; onL
         </button>
       </header>
 
-      <div className="relative aspect-[4/5] overflow-hidden">
-        <img src={post.media_url} alt={post.caption ?? "Post"} width={600} height={750} loading="lazy"
-          className={`size-full object-cover transition-all ${isLocked ? "scale-110 blur-2xl brightness-50" : ""}`} />
-        {!isLocked && post.media_type === "vídeo" && (
-          <span className="absolute inset-0 grid place-items-center">
-            <span className="grid size-16 place-items-center rounded-full bg-black/50 backdrop-blur-md">
-              <Play className="size-7 text-foreground" fill="currentColor" />
-            </span>
-          </span>
+      <div className="relative aspect-[4/5] overflow-hidden bg-black">
+        {isLocked ? (
+          <img
+            src={post.media_url}
+            alt={post.caption ?? "Post"}
+            className="size-full object-cover scale-110 blur-2xl brightness-50"
+          />
+        ) : isVideo ? (
+          <video
+            src={post.media_url}
+            controls
+            playsInline
+            className="size-full object-contain"
+          />
+        ) : (
+          <img
+            src={post.media_url}
+            alt={post.caption ?? "Post"}
+            className="size-full object-cover"
+          />
         )}
+
         {isLocked && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
             <span className="grid size-16 place-items-center rounded-full border border-gold/40 bg-black/50 shadow-gold backdrop-blur-md">
               <Lock className="size-7 text-gold" />
             </span>
-            <p className="text-sm font-semibold">Conteúdo VIP bloqueado</p>
+            <p className="text-sm font-semibold text-white">Conteúdo VIP bloqueado</p>
             <button
               onClick={() => { if (actions.unlock(post.id, post.coin_price)) toast("Mídia desbloqueada 🔓"); else toast.error("Saldo insuficiente. Recarregue na Loja."); }}
               className="tap-scale flex items-center gap-2 rounded-full bg-gradient-gold px-5 py-3 shadow-gold">
@@ -293,7 +307,7 @@ function PostModal({ onClose, profileId, onPosted }: {
     }
 
     const { data: { publicUrl } } = supabase.storage.from("photos").getPublicUrl(storageData.path);
-    const mediaType = file.type.startsWith("video/") ? "vídeo" : "foto";
+    const mediaType = file.type.startsWith("video/") ? "video" : "foto";
 
     const { data, error } = await supabase
       .from("feed_posts")
@@ -310,10 +324,10 @@ function PostModal({ onClose, profileId, onPosted }: {
       .single();
 
     setSaving(false);
-if (error || !data) {
-  toast.error(`Erro Banco: ${error?.message || "Perfil não encontrado ao vincular post"}`);
-  return;
-}
+    if (error || !data) {
+      toast.error(`Erro Banco: ${error?.message || "Perfil não encontrado ao vincular post"}`);
+      return;
+    }
     
     const richPost: RichPost = { ...(data as DbFeedPost), author: (data as Record<string, unknown>).profiles as DbProfile };
     onPosted(richPost);
@@ -404,4 +418,5 @@ if (error || !data) {
       </div>
     </div>
   );
-}
+        }
+  
