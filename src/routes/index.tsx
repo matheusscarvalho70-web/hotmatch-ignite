@@ -28,10 +28,8 @@ export const Route = createFileRoute("/")({
 function Discover() {
   const { profileId, gender, avatarUrl, name: myName } = useAppState();
   const navigate = useNavigate();
-  // Request browser location on mount, save to DB, and return coords for distance sort
   const coords = useUserLocation(profileId ?? "");
 
-  // Load all target IDs this user has already swiped (like or pass) so they are excluded from the deck
   const [swipedIds, setSwipedIds] = useState<string[]>([]);
   useEffect(() => {
     if (!profileId) return;
@@ -49,9 +47,6 @@ function Discover() {
 
   const { profiles, loading } = useProfiles(coords?.lat, coords?.lng, swipedIds);
 
-  // Gender-based filter:
-  //   male  → see only female profiles
-  //   female → see all profiles (both genders, excluding self)
   const deck = useMemo(() => {
     if (!profiles.length) return [];
     return profiles.filter((p) => {
@@ -61,15 +56,12 @@ function Discover() {
     });
   }, [profiles, profileId, gender]);
 
-  // lockedCard holds the card currently animating off-screen so the deck can
-  // shrink (via swipedIds) without the animating card disappearing mid-flight.
   const [lockedCard, setLockedCard] = useState<DbProfile | null>(null);
   const [matchedProfile, setMatchedProfile] = useState<DbProfile | null>(null);
   const [drag, setDrag] = useState({ x: 0, y: 0, active: false });
   const [leaving, setLeaving] = useState<"left" | "right" | "up" | null>(null);
   const start = useRef({ x: 0, y: 0 });
 
-  // Auth guard: redirect to onboarding if not logged in
   useEffect(() => {
     if (!profileId) navigate({ to: "/bem-vindo", replace: true });
   }, [profileId, navigate]);
@@ -77,25 +69,48 @@ function Discover() {
   const current: DbProfile | null = lockedCard ?? deck[0] ?? null;
   const next: DbProfile | null = lockedCard ? (deck[0] ?? null) : (deck[1] ?? null);
 
-  function decide(dir: "left" | "right" | "up") {
+  async function decide(dir: "left" | "right" | "up") {
     const target = lockedCard ?? deck[0];
-    if (!target || !profileId) return;
+    
+    // Fallback: se profileId estiver nulo no store, busca direto do auth do Supabase
+    let activeUserId = profileId;
+    if (!activeUserId) {
+      const { data: authData } = await supabase.auth.getUser();
+      activeUserId = authData.user?.id ?? null;
+    }
+
+    if (!target || !activeUserId) {
+      console.error("Tentativa de swipe sem usuario ativo ou perfil alvo", { activeUserId, target });
+      return;
+    }
+
     const action: "like" | "pass" = dir === "left" ? "pass" : "like";
 
-    setLockedCard(target);                        // freeze card during exit animation
-    setSwipedIds((prev) => [...prev, target.id]); // immediately drop from deck
+    setLockedCard(target);
+    setSwipedIds((prev) => [...prev, target.id]);
     setLeaving(dir);
 
-    recordMatch(profileId, target.id, action).then(({ mutualMatch }) => {
-      if (mutualMatch) setMatchedProfile(target);
-    });
+    // Executa a chamada do Match e verifica retorno
+    try {
+      const res = await recordMatch(activeUserId, target.id, action);
+      if (res.error) {
+        console.error("Erro retornado do recordMatch:", res.error);
+      }
+      if (res.mutualMatch) {
+        console.log("MATCH ENCONTRADO! Disparando modal...");
+        setMatchedProfile(target);
+      }
+    } catch (err) {
+      console.error("Erro inesperado no recordMatch:", err);
+    }
+
     if (dir === "right") toast("Curtida enviada 💗", { description: `Você curtiu ${target.name}` });
     if (dir === "up") toast("Super Like ⭐", { description: `${target.name} vai ver seu Super Like primeiro` });
 
     setTimeout(() => {
       setLeaving(null);
       setDrag({ x: 0, y: 0, active: false });
-      setLockedCard(null); // release lock — deck[0] is now the next unseen profile
+      setLockedCard(null);
     }, 260);
   }
 
@@ -241,11 +256,9 @@ function MatchModal({
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 px-6 backdrop-blur-sm">
       <div className="w-full max-w-xs rounded-3xl bg-surface p-8 text-center shadow-[0_0_60px_rgba(255,60,90,0.3)]">
-        {/* Flame gradient heading */}
         <h2 className="text-3xl font-black tracking-tight text-primary">Deu Match! 🔥</h2>
         <p className="mt-1 text-sm text-muted-foreground">Vocês se curtiram!</p>
 
-        {/* Overlapping avatars */}
         <div className="relative mt-6 flex items-center justify-center">
           <div className="relative">
             <Avatar url={myAvatar} label={myName} size="lg" />
@@ -258,7 +271,6 @@ function MatchModal({
 
         <p className="mt-4 font-bold">{partner.name}</p>
 
-        {/* Actions */}
         <button
           onClick={onMessage}
           className="tap-scale mt-6 w-full rounded-full bg-gradient-hot py-3 text-sm font-extrabold text-primary-foreground shadow-hot"
@@ -292,6 +304,7 @@ function Avatar({ url, label, size, ring }: { url: string | null; label: string;
     </div>
   );
 }
+
 function CardShell({
   profile,
   className = "",
@@ -383,4 +396,5 @@ function Stamp({ label, tone, style, left, center }: {
       {label}
     </span>
   );
-}
+        }
+                      
