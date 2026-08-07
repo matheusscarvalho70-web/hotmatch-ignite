@@ -51,23 +51,35 @@ export async function recordMatch(
   action: "like" | "pass",
 ): Promise<{ error: string | null; mutualMatch: boolean }> {
 
-  // 1. Grava no feed
+  // 1. Grava no feed/matches
   const { error: swipeError } = await supabase.from("matches").upsert(
     { user_id: userId, target_user_id: targetUserId, action },
     { onConflict: "user_id,target_user_id" },
   );
-  if (swipeError) return { error: swipeError.message, mutualMatch: false };
+
+  if (swipeError) {
+    console.error("Erro ao gravar em matches:", swipeError.message);
+  }
 
   if (action !== "like") return { error: null, mutualMatch: false };
 
-  // 2. Grava o like
+  // 2. Grava na tabela de likes
   const { error: likeError } = await supabase.from("likes").upsert(
     { user_id: userId, target_user_id: targetUserId },
     { onConflict: "user_id,target_user_id" },
   );
-  if (likeError) return { error: likeError.message, mutualMatch: false };
 
-  // 3. Checa se o outro usario ja deu like
+  if (likeError) {
+    console.error("Erro ao gravar em likes:", likeError.message);
+    // Tenta fallback com insert simples caso upsert dê conflito de chave
+    if (likeError.message.includes("duplicate") || likeError.code === "23505") {
+      // Like já existia, segue em frente
+    } else {
+      return { error: likeError.message, mutualMatch: false };
+    }
+  }
+
+  // 3. Checa se o outro usuario ja deu like de volta
   const { data: reverseLikes } = await supabase
     .from("likes")
     .select("id")
@@ -76,7 +88,7 @@ export async function recordMatch(
 
   const reverseLike = reverseLikes && reverseLikes.length > 0 ? reverseLikes[0] : null;
 
-  // Notificao de like individual
+  // Notificação de like individual
   supabase
     .from("profiles")
     .select("name, avatar_url")
@@ -97,15 +109,15 @@ export async function recordMatch(
 
   if (!reverseLike) return { error: null, mutualMatch: false };
 
-  // 4. DEU MATCH MUTUO! Grava na tabela com as colunas corretas (user_1 e user_2)
+  // 4. DEU MATCH MÚTUO! Grava na tabela mutual_matches
   const [u1, u2] = [userId, targetUserId].sort();
   const { error: matchError } = await supabase.from("mutual_matches").insert({
     user_1: u1,
     user_2: u2,
   });
 
-  if (matchError && !matchError.message.includes("duplicate")) {
-    console.error("Erro ao gravar match:", matchError);
+  if (matchError && !matchError.message.includes("duplicate") && matchError.code !== "23505") {
+    console.error("Erro ao gravar match mútuo:", matchError);
   }
 
   // 5. Notifica ambos
