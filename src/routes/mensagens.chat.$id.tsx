@@ -22,7 +22,7 @@ import { useChat, type LocalMessage } from "@/hooks/use-chat";
 import { useProfiles } from "@/hooks/use-profiles";
 import { supabase } from "@/lib/supabase";
 
-export const Route = createFileRoute("/mensagens/$chatId")({
+export const Route = createFileRoute("/mensagens/chat/$id")({
   component: Chat,
 });
 
@@ -34,7 +34,7 @@ const AUTO_REPLIES = [
 ];
 
 function Chat() {
-  const { chatId } = useParams({ from: "/mensagens/$chatId" });
+  const { id: chatId } = useParams({ from: "/mensagens/chat/$id" });
   const { unlocked, profileId, gender } = useAppState();
   const isCreator = gender === "female";
   const myId = profileId ?? "";
@@ -411,4 +411,4 @@ function Chat() {
               {["Comportamento Inadequado", "Spam ou Golpe", "Perfil Falso", "Conteúdo Ofensivo"].map((reason) => (
                 <button key={reason} onClick={() => setReportSubject(reason)} className={`w-full rounded-xl border p-3 text-left text-xs font-medium ${reportSubject === reason ? "border-destructive bg-destructive/10 text-destructive" : "border-border bg-background"}`}>
                   {reason}
-           
+     
