@@ -189,7 +189,7 @@ function ProfilePage() {
           </button>
           <img
             src={selectedImage}
-            alt="Visualização em Tela Cheia"
+            alt="Visualizacao em Tela Cheia"
             className="max-h-[90vh] max-w-[95vw] rounded-2xl object-contain shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           />
@@ -245,7 +245,7 @@ function VisitorProfile({
     if (!profileId) return;
     if (unlocked) return;
     if (coins < price) {
-      toast.error(`Saldo insuficiente. Você precisa de ${price} moedas.`);
+      toast.error(`Saldo insuficiente. Voce precisa de ${price} moedas.`);
       return;
     }
     setPaying(true);
@@ -279,7 +279,7 @@ function VisitorProfile({
       actions.unlockGallery(profile.id, price);
 
       setUnlocked(true);
-      toast.success("Galeria VIP desbloqueada! 🔓");
+      toast.success("Galeria VIP desbloqueada!");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erro ao desbloquear.");
     } finally {
@@ -325,7 +325,7 @@ function VisitorProfile({
           onClick={() => setTab("public")}
           className={`flex-1 rounded-full py-2 text-xs font-bold transition ${tab === "public" ? "bg-gradient-hot text-primary-foreground shadow-hot" : "text-muted-foreground"}`}
         >
-          Galeria pública
+          Galeria publica
         </button>
         <button
           onClick={() => setTab("vip")}
@@ -353,7 +353,7 @@ function VisitorProfile({
           ) : (
             <div className="col-span-3 flex flex-col items-center gap-1 rounded-2xl border border-dashed border-border bg-surface py-8 text-center">
               <p className="text-sm font-bold text-muted-foreground">Galeria vazia</p>
-              <p className="text-xs text-muted-foreground">Esta criadora ainda não publicou fotos públicas.</p>
+              <p className="text-xs text-muted-foreground">Esta criadora ainda nao publicou fotos publicas.</p>
             </div>
           )
         ) : (
@@ -361,7 +361,7 @@ function VisitorProfile({
             {!hasVipPhotos ? (
               <div className="col-span-3 flex flex-col items-center gap-1 rounded-2xl border border-dashed border-border bg-surface py-8 text-center">
                 <p className="text-sm font-bold text-gold">Galeria VIP vazia</p>
-                <p className="text-xs text-muted-foreground">Esta criadora ainda não adicionou fotos VIP.</p>
+                <p className="text-xs text-muted-foreground">Esta criadora ainda nao adicionou fotos VIP.</p>
               </div>
             ) : (
               vipPhotos.map((src, i) => (
@@ -415,7 +415,7 @@ function VisitorProfile({
           </button>
           {vip && (
             <p className="text-[11px] font-semibold text-gold">
-              Você ganhou 5 moedas de desconto por ser VIP!
+              Voce ganhou 5 moedas de desconto por ser VIP!
             </p>
           )}
           <p className="text-[11px] text-muted-foreground">
@@ -429,7 +429,7 @@ function VisitorProfile({
 
       {tab === "vip" && unlocked && hasVipPhotos && (
         <p className="mx-4 mt-3 text-center text-xs font-semibold text-emerald-400">
-          Galeria VIP desbloqueada — aproveite! 🔓
+          Galeria VIP desbloqueada — aproveite!
         </p>
       )}
 
@@ -467,7 +467,7 @@ function CreatorProfile({
   return (
     <>
       <div className="mt-5 grid grid-cols-3 gap-3 px-4">
-        <Stat icon={<Eye className="size-4 text-foreground/70" />} label="Visualizações" value="0" />
+        <Stat icon={<Eye className="size-4 text-foreground/70" />} label="Visualizacoes" value="0" />
         <Stat icon={<Heart className="size-4 text-primary" />} label="Curtidas" value={stats.likesTotal.toLocaleString("pt-BR")} />
         <Stat icon={<Gift className="size-4 text-gold" />} label="Mimos" value={stats.giftsReceived.toLocaleString("pt-BR")} />
       </div>
@@ -477,7 +477,7 @@ function CreatorProfile({
           onClick={() => setTab("public")}
           className={`flex-1 rounded-full py-2 text-xs font-bold transition ${tab === "public" ? "bg-gradient-hot text-primary-foreground shadow-hot" : "text-muted-foreground"}`}
         >
-          Galeria pública
+          Galeria publica
         </button>
         <button
           onClick={() => setTab("vip")}
@@ -494,7 +494,7 @@ function CreatorProfile({
               <img
                 key={i}
                 src={src}
-                alt={`Foto pública ${i + 1}`}
+                alt={`Foto publica ${i + 1}`}
                 width={768}
                 height={1024}
                 loading="lazy"
@@ -513,9 +513,9 @@ function CreatorProfile({
             <img
               key={i}
               src={src}
-              alt={`Mídia VIP ${i + 1}`}
+              alt={`Midia VIP ${i + 1}`}
               width={768}
               height={1024}
               loading="lazy"
               onClick={() => onImageClick(src)}
-              className="aspect-square w-full cursor-pointer rounded-xl object-cover transition 
+              className="aspect-square w-full cursor-pointer rounded-xl object-cover transition active
