@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, Coins, Crown, Heart, Lock, MessageCircle, Plus, Send, Upload, UserPlus } from "lucide-react";
+import { Check, Coins, Crown, Heart, Lock, MessageCircle, Plus, Send, Trash2, Upload, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { haversineKm, useUserLocation } from "@/hooks/use-profiles";
 import { TopBar } from "@/components/hotmatch/TopBar";
@@ -33,7 +33,6 @@ async function fetchPosts(): Promise<RichPost[]> {
 function Feed() {
   const { gender, followed, profileId } = useAppState();
   const isCreator = gender === "female";
-  // Request browser location on mount; used to sort general feed by author proximity
   const coords = useUserLocation(profileId ?? "");
 
   const tabs: { id: FeedTab; label: string }[] = isCreator
@@ -55,12 +54,16 @@ function Feed() {
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "feed_posts" }, () => {
         if (!cancelled) fetchPosts().then((p) => { if (!cancelled) setAllPosts(p); });
       })
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "feed_posts" }, (payload) => {
+        if (!cancelled && payload.old?.id) {
+          setAllPosts((prev) => prev.filter((item) => item.id !== payload.old.id));
+        }
+      })
       .subscribe();
 
     return () => { cancelled = true; supabase.removeChannel(ch); };
   }, []);
 
-  // Sort general-feed posts by author proximity when the user's coordinates are available
   const displayPosts = useMemo(() => {
     const base =
       activeTab === "following" ? allPosts.filter((p) => followed.includes(p.author_id))
@@ -79,6 +82,18 @@ function Feed() {
       return da - db;
     });
   }, [allPosts, activeTab, followed, profileId, coords]);
+
+  const handleDeletePost = async (postId: string) => {
+    if (!confirm("Tem certeza que deseja excluir esta publicação?")) return;
+
+    const { error } = await supabase.from("feed_posts").delete().eq("id", postId);
+    if (error) {
+      toast.error("Erro ao excluir a publicação.");
+    } else {
+      setAllPosts((prev) => prev.filter((p) => p.id !== postId));
+      toast.success("Publicação excluída com sucesso!");
+    }
+  };
 
   return (
     <div className="min-h-screen pb-32">
@@ -103,6 +118,7 @@ function Feed() {
             <PostCard key={p.id} post={p}
               liked={likedIds.includes(p.id)}
               onLike={() => setLikedIds((ids) => ids.includes(p.id) ? ids.filter((x) => x !== p.id) : [...ids, p.id])}
+              onDelete={() => handleDeletePost(p.id)}
             />
           ))
         )}
@@ -162,10 +178,11 @@ function PostSkeleton() {
   );
 }
 
-function PostCard({ post, liked, onLike }: { post: RichPost; liked: boolean; onLike: () => void }) {
+function PostCard({ post, liked, onLike, onDelete }: { post: RichPost; liked: boolean; onLike: () => void; onDelete: () => void }) {
   const { unlocked, followed, profileId } = useAppState();
   const isLocked = post.is_locked && !unlocked.includes(post.id);
   const isFollowing = followed.includes(post.author_id);
+  const isOwner = profileId === post.author_id;
 
   const relTime = (() => {
     const s = Math.floor((Date.now() - new Date(post.created_at).getTime()) / 1000);
@@ -194,26 +211,36 @@ function PostCard({ post, liked, onLike }: { post: RichPost; liked: boolean; onL
           </Link>
           <p className="text-xs text-muted-foreground">{relTime} · {post.media_type}</p>
         </div>
-        <button
-          onClick={() => {
-            if (isFollowing) {
-              actions.unfollow(post.author_id);
-              toast(`Deixou de seguir ${post.author.name}`);
-              if (profileId) supabase.from("follows").delete()
-                .eq("follower_id", profileId).eq("following_id", post.author_id)
-                .then(() => {}).catch(() => {});
-            } else {
-              actions.follow(post.author_id);
-              toast(`Seguindo ${post.author.name} 💗`);
-              if (profileId) supabase.from("follows").upsert(
-                { follower_id: profileId, following_id: post.author_id },
-                { onConflict: "follower_id,following_id" }
-              ).then(() => {}).catch(() => {});
-            }
-          }}
-          className={`tap-scale flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition-all ${isFollowing ? "border border-border bg-surface-2 text-foreground" : "bg-gradient-hot text-primary-foreground"}`}>
-          {isFollowing ? <><Check className="size-3" />Seguindo</> : "Seguir"}
-        </button>
+
+        {isOwner ? (
+          <button
+            onClick={onDelete}
+            title="Excluir publicação"
+            className="tap-scale flex items-center justify-center rounded-full p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors">
+            <Trash2 className="size-4" />
+          </button>
+        ) : (
+          <button
+            onClick={() => {
+              if (isFollowing) {
+                actions.unfollow(post.author_id);
+                toast(`Deixou de seguir ${post.author.name}`);
+                if (profileId) supabase.from("follows").delete()
+                  .eq("follower_id", profileId).eq("following_id", post.author_id)
+                  .then(() => {}).catch(() => {});
+              } else {
+                actions.follow(post.author_id);
+                toast(`Seguindo ${post.author.name} 💗`);
+                if (profileId) supabase.from("follows").upsert(
+                  { follower_id: profileId, following_id: post.author_id },
+                  { onConflict: "follower_id,following_id" }
+                ).then(() => {}).catch(() => {});
+              }
+            }}
+            className={`tap-scale flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition-all ${isFollowing ? "border border-border bg-surface-2 text-foreground" : "bg-gradient-hot text-primary-foreground"}`}>
+            {isFollowing ? <><Check className="size-3" />Seguindo</> : "Seguir"}
+          </button>
+        )}
       </header>
 
       <div className="relative aspect-[4/5] overflow-hidden bg-black">
@@ -334,7 +361,6 @@ function PostModal({ onClose, profileId, onPosted }: {
     onClose();
     toast("Mídia VIP publicada ✨", { description: `Preço: ${price === 0 ? "Grátis" : `${price} moedas`}` });
 
-    // Notify followers (fire-and-forget)
     const authorName = richPost.author?.name ?? "Criadora";
     supabase
       .from("follows")
@@ -419,4 +445,4 @@ function PostModal({ onClose, profileId, onPosted }: {
     </div>
   );
         }
-  
+      
