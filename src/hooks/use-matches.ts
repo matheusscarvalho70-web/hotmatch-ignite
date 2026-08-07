@@ -51,44 +51,31 @@ export async function recordMatch(
   action: "like" | "pass",
 ): Promise<{ error: string | null; mutualMatch: boolean }> {
 
-  // 1. Grava no feed/matches
+  // 1. Grava no feed / histórico de ações
   const { error: swipeError } = await supabase.from("matches").upsert(
     { user_id: userId, target_user_id: targetUserId, action },
     { onConflict: "user_id,target_user_id" },
   );
 
   if (swipeError) {
-    console.error("Erro ao gravar em matches:", swipeError.message);
+    console.error("Erro ao gravar histórico em matches:", swipeError.message);
   }
 
+  // Se foi um 'pass' (descarte), encerra aqui
   if (action !== "like") return { error: null, mutualMatch: false };
 
-  // 2. Grava na tabela de likes
+  // 2. Grava a curtida na tabela 'likes'
   const { error: likeError } = await supabase.from("likes").upsert(
     { user_id: userId, target_user_id: targetUserId },
     { onConflict: "user_id,target_user_id" },
   );
 
-  if (likeError) {
+  if (likeError && !likeError.message.includes("duplicate") && likeError.code !== "23505") {
     console.error("Erro ao gravar em likes:", likeError.message);
-    // Tenta fallback com insert simples caso upsert dê conflito de chave
-    if (likeError.message.includes("duplicate") || likeError.code === "23505") {
-      // Like já existia, segue em frente
-    } else {
-      return { error: likeError.message, mutualMatch: false };
-    }
+    return { error: likeError.message, mutualMatch: false };
   }
 
-  // 3. Checa se o outro usuario ja deu like de volta
-  const { data: reverseLikes } = await supabase
-    .from("likes")
-    .select("id")
-    .eq("user_id", targetUserId)
-    .eq("target_user_id", userId);
-
-  const reverseLike = reverseLikes && reverseLikes.length > 0 ? reverseLikes[0] : null;
-
-  // Notificação de like individual
+  // 3. Notificação interna + Push de "Alguém curtiu você"
   supabase
     .from("profiles")
     .select("name, avatar_url")
@@ -104,23 +91,37 @@ export async function recordMatch(
         actor_id: userId,
         actor_avatar_url: actor?.avatar_url ?? null,
       }).then(() => {});
+
+      supabase
+        .from("profiles")
+        .select("onesignal_player_id")
+        .eq("id", targetUserId)
+        .maybeSingle()
+        .then(({ data: targetProf }) => {
+          if ((targetProf as any)?.onesignal_player_id) {
+            sendPushNotification(
+              (targetProf as any).onesignal_player_id,
+              actor?.name ? `${actor.name} curtiu você! 🔥` : "Nova curtida! 🔥",
+              "Toque para ver no HotMatch"
+            );
+          }
+        });
     })
     .catch(() => {});
 
-  if (!reverseLike) return { error: null, mutualMatch: false };
-
-  // 4. DEU MATCH MÚTUO! Grava na tabela mutual_matches
+  // 4. Verifica se o Trigger do banco gerou um Match Mútuo entre os dois
   const [u1, u2] = [userId, targetUserId].sort();
-  const { error: matchError } = await supabase.from("mutual_matches").insert({
-    user_1: u1,
-    user_2: u2,
-  });
+  const { data: matchData } = await supabase
+    .from("mutual_matches")
+    .select("id")
+    .eq("user_1", u1)
+    .eq("user_2", u2)
+    .maybeSingle();
 
-  if (matchError && !matchError.message.includes("duplicate") && matchError.code !== "23505") {
-    console.error("Erro ao gravar match mútuo:", matchError);
-  }
+  // Se ainda não houve match recíproco, encerra por aqui
+  if (!matchData) return { error: null, mutualMatch: false };
 
-  // 5. Notifica ambos
+  // 5. DEU MATCH MÚTUO! Dispara notificações e push de Match para ambos
   supabase
     .from("profiles")
     .select("id, name, onesignal_player_id")
@@ -153,9 +154,6 @@ export async function recordMatch(
   return { error: null, mutualMatch: true };
 }
 
-/**
- * Busca a lista de matches buscando nas colunas user_1 e user_2
- */
 export async function fetchMutualMatchIds(profileId: string): Promise<Set<string>> {
   const { data } = await supabase
     .from("mutual_matches")
