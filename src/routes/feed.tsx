@@ -310,7 +310,11 @@ function PostModal({ onClose, profileId, onPosted }: {
       .single();
 
     setSaving(false);
-    if (error || !data) { toast.error("Erro ao publicar. Tente novamente."); return; }
+if (error || !data) {
+  toast.error(`Erro Banco: ${error?.message || "Perfil não encontrado ao vincular post"}`);
+  return;
+}
+    
     const richPost: RichPost = { ...(data as DbFeedPost), author: (data as Record<string, unknown>).profiles as DbProfile };
     onPosted(richPost);
     onClose();
