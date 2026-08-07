@@ -27,7 +27,10 @@ async function fetchPosts(): Promise<RichPost[]> {
     .order("created_at", { ascending: false })
     .limit(40);
   if (error || !data) return [];
-  return data.map((row) => ({ ...(row as DbFeedPost), author: (row as Record<string, unknown>).profiles as DbProfile }));
+  return data.map((row) => ({
+    ...(row as DbFeedPost),
+    author: (row as Record<string, unknown>).profiles as DbProfile,
+  }));
 }
 
 function Feed() {
@@ -36,8 +39,14 @@ function Feed() {
   const coords = useUserLocation(profileId ?? "");
 
   const tabs: { id: FeedTab; label: string }[] = isCreator
-    ? [{ id: "geral", label: "Feed Geral" }, { id: "meus", label: "Meus Posts" }]
-    : [{ id: "geral", label: "Feed Geral" }, { id: "following", label: "Seguindo" }];
+    ? [
+        { id: "geral", label: "Feed Geral" },
+        { id: "meus", label: "Meus Posts" },
+      ]
+    : [
+        { id: "geral", label: "Feed Geral" },
+        { id: "following", label: "Seguindo" },
+      ];
 
   const [activeTab, setActiveTab] = useState<FeedTab>("geral");
   const [postOpen, setPostOpen] = useState(false);
@@ -48,11 +57,21 @@ function Feed() {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    fetchPosts().then((p) => { if (!cancelled) { setAllPosts(p); setLoading(false); } });
+    fetchPosts().then((p) => {
+      if (!cancelled) {
+        setAllPosts(p);
+        setLoading(false);
+      }
+    });
 
-    const ch = supabase.channel("feed_live")
+    const ch = supabase
+      .channel("feed_live")
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "feed_posts" }, () => {
-        if (!cancelled) fetchPosts().then((p) => { if (!cancelled) setAllPosts(p); });
+        if (!cancelled) {
+          fetchPosts().then((p) => {
+            if (!cancelled) setAllPosts(p);
+          });
+        }
       })
       .on("postgres_changes", { event: "DELETE", schema: "public", table: "feed_posts" }, (payload) => {
         if (!cancelled && payload.old?.id) {
@@ -61,15 +80,22 @@ function Feed() {
       })
       .subscribe();
 
-    return () => { cancelled = true; supabase.removeChannel(ch); };
+    return () => {
+      cancelled = true;
+      supabase.removeChannel(ch);
+    };
   }, []);
 
   const displayPosts = useMemo(() => {
     const base =
-      activeTab === "following" ? allPosts.filter((p) => followed.includes(p.author_id))
-      : activeTab === "meus"    ? allPosts.filter((p) => p.author_id === profileId)
-      : allPosts;
+      activeTab === "following"
+        ? allPosts.filter((p) => followed.includes(p.author_id))
+        : activeTab === "meus"
+        ? allPosts.filter((p) => p.author_id === profileId)
+        : allPosts;
+
     if (activeTab !== "geral" || !coords) return base;
+
     return [...base].sort((a, b) => {
       const da =
         a.author?.latitude != null && a.author?.longitude != null
@@ -101,8 +127,13 @@ function Feed() {
 
       <div className="sticky top-[3.5rem] z-30 mx-4 mb-4 flex rounded-full border border-border bg-surface p-1">
         {tabs.map((t) => (
-          <button key={t.id} onClick={() => setActiveTab(t.id)}
-            className={`flex-1 rounded-full py-2 text-xs font-bold transition-all ${activeTab === t.id ? "bg-gradient-hot text-primary-foreground shadow-hot" : "text-muted-foreground"}`}>
+          <button
+            key={t.id}
+            onClick={() => setActiveTab(t.id)}
+            className={`flex-1 rounded-full py-2 text-xs font-bold transition-all ${
+              activeTab === t.id ? "bg-gradient-hot text-primary-foreground shadow-hot" : "text-muted-foreground"
+            }`}
+          >
             {t.label}
           </button>
         ))}
@@ -115,10 +146,14 @@ function Feed() {
           <EmptyFeed tab={activeTab} />
         ) : (
           displayPosts.map((p) => (
-            <PostCard key={p.id} post={p}
+            <PostCard
+              key={p.id}
+              post={p}
               activeTab={activeTab}
               liked={likedIds.includes(p.id)}
-              onLike={() => setLikedIds((ids) => ids.includes(p.id) ? ids.filter((x) => x !== p.id) : [...ids, p.id])}
+              onLike={() =>
+                setLikedIds((ids) => (ids.includes(p.id) ? ids.filter((x) => x !== p.id) : [...ids, p.id]))
+              }
               onDelete={() => handleDeletePost(p.id)}
             />
           ))
@@ -126,8 +161,10 @@ function Feed() {
       </div>
 
       {isCreator && (
-        <button onClick={() => setPostOpen(true)}
-          className="tap-scale fixed bottom-28 right-[max(1rem,calc(50%-14rem))] z-40 flex items-center gap-2 rounded-full bg-gradient-gold px-4 py-3 shadow-gold">
+        <button
+          onClick={() => setPostOpen(true)}
+          className="tap-scale fixed bottom-28 right-[max(1rem,calc(50%-14rem))] z-40 flex items-center gap-2 rounded-full bg-gradient-gold px-4 py-3 shadow-gold"
+        >
           <Plus className="size-5 text-gold-foreground" />
           <span className="text-sm font-bold text-gold-foreground">Postar Mídia VIP</span>
         </button>
@@ -145,27 +182,37 @@ function Feed() {
 }
 
 function EmptyFeed({ tab }: { tab: FeedTab }) {
+  if (tab === "following") {
+    return (
+      <div className="flex flex-col items-center gap-3 py-16 text-center">
+        <div className="grid size-16 place-items-center rounded-full bg-surface-2">
+          <UserPlus className="size-7 text-muted-foreground" />
+        </div>
+        <p className="text-sm font-semibold">Você ainda não segue nenhuma criadora</p>
+        <p className="max-w-xs text-xs text-muted-foreground">Siga criadoras no feed geral para ver os posts delas aqui.</p>
+      </div>
+    );
+  }
+
+  if (tab === "meus") {
+    return (
+      <div className="flex flex-col items-center gap-3 py-16 text-center">
+        <div className="grid size-16 place-items-center rounded-full bg-surface-2">
+          <UserPlus className="size-7 text-muted-foreground" />
+        </div>
+        <p className="text-sm font-semibold">Você ainda não publicou nada</p>
+        <p className="max-w-xs text-xs text-muted-foreground">Toque em Postar Mídia VIP para publicar seu primeiro conteúdo.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col items-center gap-3 py-16 text-center">
       <div className="grid size-16 place-items-center rounded-full bg-surface-2">
         <UserPlus className="size-7 text-muted-foreground" />
       </div>
-      {tab === "following" ? (
-        <>
-          <p className="text-sm font-semibold">Você ainda não segue nenhuma criadora</p>
-          <p className="max-w-xs text-xs text-muted-foreground">Siga criadoras no feed geral para ver os posts delas aqui.</p>
-        </>
-      ) : tab === "meus" ? (
-        <>
-          <p className="text-sm font-semibold">Você ainda não publicou nada</p>
-          <p className="max-w-xs text-xs text-muted-foreground">Toque em Postar Mídia VIP para publicar seu primeiro conteúdo.</p>
-        </>
-      ) : (
-        <>
-          <p className="text-sm font-semibold">Nenhum post disponível ainda</p>
-          <p className="max-w-xs text-xs text-muted-foreground">Seja a primeira criadora a postar conteúdo exclusivo!</p>
-        </>
-      )}
+      <p className="text-sm font-semibold">Nenhum post disponível ainda</p>
+      <p className="max-w-xs text-xs text-muted-foreground">Seja a primeira criadora a postar conteúdo exclusivo!</p>
     </div>
   );
 }
@@ -185,10 +232,22 @@ function PostSkeleton() {
   );
 }
 
-function PostCard({ post, activeTab, liked, onLike, onDelete }: { post: RichPost; activeTab: FeedTab; liked: boolean; onLike: () => void; onDelete: () => void }) {
+function PostCard({
+  post,
+  activeTab,
+  liked,
+  onLike,
+  onDelete,
+}: {
+  post: RichPost;
+  activeTab: FeedTab;
+  liked: boolean;
+  onLike: () => void;
+  onDelete: () => void;
+}) {
   const { unlocked, followed, profileId } = useAppState();
   const isOwner = profileId === post.author_id;
-  
+
   const isLocked = post.is_locked && !unlocked.includes(post.id) && (!isOwner || activeTab === "geral");
   const isFollowing = followed.includes(post.author_id);
 
@@ -208,8 +267,17 @@ function PostCard({ post, activeTab, liked, onLike, onDelete }: { post: RichPost
         <Link to="/perfil" search={{ uid: post.author_id }}>
           <span className="ring-match grid size-11 shrink-0 place-items-center rounded-full p-[2px]">
             {post.author.avatar_url ? (
-              <img src={post.author.avatar_url} alt={post.author.name} width={200} height={200} loading="lazy" className="size-full rounded-full object-cover" />
-            ) : <div className="size-full rounded-full bg-surface-2" />}
+              <img
+                src={post.author.avatar_url}
+                alt={post.author.name}
+                width={200}
+                height={200}
+                loading="lazy"
+                className="size-full rounded-full object-cover"
+              />
+            ) : (
+              <div className="size-full rounded-full bg-surface-2" />
+            )}
           </span>
         </Link>
         <div className="min-w-0 flex-1">
@@ -217,14 +285,17 @@ function PostCard({ post, activeTab, liked, onLike, onDelete }: { post: RichPost
             <p className="truncate text-sm font-bold">{post.author.name}</p>
             {post.author.is_verified && <Crown className="size-3.5 shrink-0 text-gold" fill="currentColor" />}
           </Link>
-          <p className="text-xs text-muted-foreground">{relTime} · {post.media_type}</p>
+          <p className="text-xs text-muted-foreground">
+            {relTime} · {post.media_type}
+          </p>
         </div>
 
         {isOwner ? (
           <button
             onClick={onDelete}
             title="Excluir publicação"
-            className="tap-scale flex items-center justify-center rounded-full p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors">
+            className="tap-scale flex items-center justify-center rounded-full p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
+          >
             <Trash2 className="size-4" />
           </button>
         ) : (
@@ -233,20 +304,42 @@ function PostCard({ post, activeTab, liked, onLike, onDelete }: { post: RichPost
               if (isFollowing) {
                 actions.unfollow(post.author_id);
                 toast(`Deixou de seguir ${post.author.name}`);
-                if (profileId) supabase.from("follows").delete()
-                  .eq("follower_id", profileId).eq("following_id", post.author_id)
-                  .then(() => {}).catch(() => {});
+                if (profileId) {
+                  supabase
+                    .from("follows")
+                    .delete()
+                    .eq("follower_id", profileId)
+                    .eq("following_id", post.author_id)
+                    .then(() => {})
+                    .catch(() => {});
+                }
               } else {
                 actions.follow(post.author_id);
-                toast(`Seguindo ${post.author.name} 💗`);
-                if (profileId) supabase.from("follows").upsert(
-                  { follower_id: profileId, following_id: post.author_id },
-                  { onConflict: "follower_id,following_id" }
-                ).then(() => {}).catch(() => {});
+                toast(`Seguindo ${post.author.name}`);
+                if (profileId) {
+                  supabase
+                    .from("follows")
+                    .upsert(
+                      { follower_id: profileId, following_id: post.author_id },
+                      { onConflict: "follower_id,following_id" }
+                    )
+                    .then(() => {})
+                    .catch(() => {});
+                }
               }
             }}
-            className={`tap-scale flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition-all ${isFollowing ? "border border-border bg-surface-2 text-foreground" : "bg-gradient-hot text-primary-foreground"}`}>
-            {isFollowing ? <><Check className="size-3" />Seguindo</> : "Seguir"}
+            className={`tap-scale flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition-all ${
+              isFollowing ? "border border-border bg-surface-2 text-foreground" : "bg-gradient-hot text-primary-foreground"
+            }`}
+          >
+            {isFollowing ? (
+              <>
+                <Check className="size-3" />
+                Seguindo
+              </>
+            ) : (
+              "Seguir"
+            )}
           </button>
         )}
       </header>
@@ -259,18 +352,9 @@ function PostCard({ post, activeTab, liked, onLike, onDelete }: { post: RichPost
             className="size-full object-cover scale-110 blur-2xl brightness-50"
           />
         ) : isVideo ? (
-          <video
-            src={post.media_url}
-            controls
-            playsInline
-            className="size-full object-contain"
-          />
+          <video src={post.media_url} controls playsInline className="size-full object-contain" />
         ) : (
-          <img
-            src={post.media_url}
-            alt={post.caption ?? "Post"}
-            className="size-full object-cover"
-          />
+          <img src={post.media_url} alt={post.caption ?? "Post"} className="size-full object-cover" />
         )}
 
         {isLocked && (
@@ -285,11 +369,18 @@ function PostCard({ post, activeTab, liked, onLike, onDelete }: { post: RichPost
                   toast.info("Este é o seu próprio post!");
                   return;
                 }
-                if (actions.unlock(post.id, post.coin_price)) toast("Mídia desbloqueada 🔓"); else toast.error("Saldo insuficiente. Recarregue na Loja.");
+                if (actions.unlock(post.id, post.coin_price)) {
+                  toast("Mídia desbloqueada");
+                } else {
+                  toast.error("Saldo insuficiente. Recarregue na Loja.");
+                }
               }}
-              className="tap-scale flex items-center gap-2 rounded-full bg-gradient-gold px-5 py-3 shadow-gold">
+              className="tap-scale flex items-center gap-2 rounded-full bg-gradient-gold px-5 py-3 shadow-gold"
+            >
               <Coins className="size-4 text-gold-foreground" />
-              <span className="text-sm font-bold text-gold-foreground">Desbloquear por {post.coin_price} moedas</span>
+              <span className="text-sm font-bold text-gold-foreground">
+                Desbloquear por {post.coin_price} moedas
+              </span>
             </button>
           </div>
         )}
@@ -302,20 +393,31 @@ function PostCard({ post, activeTab, liked, onLike, onDelete }: { post: RichPost
             <span className="font-semibold tabular-nums">{post.likes + (liked ? 1 : 0)}</span>
           </button>
           <button className="tap-scale flex items-center gap-1.5 text-sm text-muted-foreground">
-            <MessageCircle className="size-5" /><span className="font-semibold">Comentar</span>
+            <MessageCircle className="size-5" />
+            <span className="font-semibold">Comentar</span>
           </button>
-          <button className="tap-scale ml-auto text-muted-foreground"><Send className="size-5" /></button>
+          <button className="tap-scale ml-auto text-muted-foreground">
+            <Send className="size-5" />
+          </button>
         </div>
         {post.caption && (
-          <p className="text-sm"><span className="font-bold">{post.author.name}</span> {post.caption}</p>
+          <p className="text-sm">
+            <span className="font-bold">{post.author.name}</span> {post.caption}
+          </p>
         )}
       </footer>
     </article>
   );
 }
 
-function PostModal({ onClose, profileId, onPosted }: {
-  onClose: () => void; profileId: string | null; onPosted: (p: RichPost) => void;
+function PostModal({
+  onClose,
+  profileId,
+  onPosted,
+}: {
+  onClose: () => void;
+  profileId: string | null;
+  onPosted: (p: RichPost) => void;
 }) {
   const [price, setPrice] = useState(60);
   const [caption, setCaption] = useState("");
@@ -332,8 +434,14 @@ function PostModal({ onClose, profileId, onPosted }: {
   }
 
   async function publish() {
-    if (!profileId) { toast.error("Faça login primeiro."); return; }
-    if (!file) { toast.error("Selecione uma imagem ou vídeo antes de publicar."); return; }
+    if (!profileId) {
+      toast.error("Faça login primeiro.");
+      return;
+    }
+    if (!file) {
+      toast.error("Selecione uma imagem ou vídeo antes de publicar.");
+      return;
+    }
     setSaving(true);
 
     const path = `feed/${profileId}/${Date.now()}_${file.name}`;
@@ -347,7 +455,9 @@ function PostModal({ onClose, profileId, onPosted }: {
       return;
     }
 
-    const { data: { publicUrl } } = supabase.storage.from("photos").getPublicUrl(storageData.path);
+    const {
+      data: { publicUrl },
+    } = supabase.storage.from("photos").getPublicUrl(storageData.path);
     const mediaType = file.type.startsWith("video/") ? "video" : "foto";
 
     const { data, error } = await supabase
@@ -369,11 +479,14 @@ function PostModal({ onClose, profileId, onPosted }: {
       toast.error(`Erro Banco: ${error?.message || "Perfil não encontrado ao vincular post"}`);
       return;
     }
-    
-    const richPost: RichPost = { ...(data as DbFeedPost), author: (data as Record<string, unknown>).profiles as DbProfile };
+
+    const richPost: RichPost = {
+      ...(data as DbFeedPost),
+      author: (data as Record<string, unknown>).profiles as DbProfile,
+    };
     onPosted(richPost);
     onClose();
-    toast("Mídia VIP publicada ✨", { description: `Preço: ${price === 0 ? "Grátis" : `${price} moedas`}` });
+    toast("Mídia VIP publicada", { description: `Preço: ${price === 0 ? "Grátis" : `${price} moedas`}` });
 
     const authorName = richPost.author?.name ?? "Criadora";
     supabase
@@ -385,7 +498,7 @@ function PostModal({ onClose, profileId, onPosted }: {
         const notifs = followers.map((f) => ({
           user_id: f.follower_id,
           type: "feed" as const,
-          title: `Nova publicação de ${authorName} 📸`,
+          title: `Nova publicação de ${authorName}`,
           content: "Veja o novo conteúdo exclusivo no feed",
           is_read: false,
           actor_id: profileId,
@@ -402,7 +515,7 @@ function PostModal({ onClose, profileId, onPosted }: {
             headers: { Authorization: `Bearer ${anonKey}`, "Content-Type": "application/json" },
             body: JSON.stringify({
               player_id: playerId,
-              title: `Nova publicação de ${authorName} 📸`,
+              title: `Nova publicação de ${authorName}`,
               message: "Veja o novo conteúdo exclusivo no feed!",
             }),
           }).catch(() => {});
@@ -430,25 +543,4 @@ function PostModal({ onClose, profileId, onPosted }: {
             <>
               <Upload className="size-6 text-gold" />
               <span className="text-sm font-semibold text-gold">Selecionar imagem ou vídeo</span>
-              <span className="text-xs text-muted-foreground">MP4, JPG ou PNG até 200 MB</span>
-            </>
-          )}
-        </button>
-        <input
-          ref={inputRef}
-          type="file"
-          accept="image/*,video/*"
-          className="hidden"
-          onChange={onFilePick}
-        />
-        <label className="mt-4 block text-xs font-semibold text-muted-foreground">Legenda</label>
-        <input value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="Escreva uma chamada irresistível..."
-          className="mt-1.5 w-full rounded-2xl border border-input bg-background px-4 py-3 text-sm outline-none focus:border-primary" />
-        <div className="mt-4 flex items-center justify-between">
-          <span className="text-xs font-semibold text-muted-foreground">Preço de desbloqueio</span>
-          <span className="text-sm font-bold text-gold">{price === 0 ? "Grátis" : `${price} moedas`}</span>
-        </div>
-        <input type="range" min={0} max={300} step={10} value={price} onChange={(e) => setPrice(Number(e.target.value))} className="mt-2 w-full accent-[oklch(0.86_0.16_92)]" />
-        <div className="mt-5 flex gap-3">
-          <button onClick={onClose} className="tap-scale flex-1 rounded-full border border-border bg-surface-2 py-3 text-sm font-semibold">Cancelar</button>
-          <button onClick={publish} disabled={saving || !file} className="tap-scale flex-[1.4] rounded-full bg-gradient-gold py-3 text-sm font-bold text-gold-foreground shadow-gold disabled:opacity-50"
+              <span className="text-xs text
