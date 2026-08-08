@@ -2,8 +2,8 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { z } from "zod";
 import {
-  BarChart2, ChevronRight, Coins, Crown, Eye, Gift,
-  Heart, HelpCircle, Lock, LogOut, Settings, Shield, Users, X, Image as ImageIcon,
+  ArrowLeft, BarChart2, ChevronRight, Coins, Crown, Eye, Gift,
+  Heart, HelpCircle, Lock, LogOut, Settings, Shield, Users, Image as ImageIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import { TopBar } from "@/components/hotmatch/TopBar";
@@ -13,12 +13,13 @@ import { EarningsDrawer } from "@/components/hotmatch/EarningsDrawer";
 import { VipModal } from "@/components/hotmatch/VipModal";
 import { StatsDrawer } from "@/components/hotmatch/StatsDrawer";
 import { SupportModal } from "@/components/hotmatch/SupportModal";
+import { Lightbox } from "@/components/hotmatch/Lightbox";
 import { actions, useAppState } from "@/lib/hotmatch/store";
 import { useProfile, useProfileStats, type ProfileStats } from "@/hooks/use-profiles";
 import { supabase, type DbProfile } from "@/lib/supabase";
 
 export const Route = createFileRoute("/perfil")({
-  validateSearch: z.object({ uid: z.string().optional() }),
+  validateSearch: z.object({ uid: z.string().optional(), from: z.string().optional() }),
   head: () => ({
     meta: [
       { title: "Meu Perfil — HotMatch" },
@@ -33,7 +34,7 @@ const VIP_PRICE_DISCOUNT = 10;
 type ModalKey = "edit" | "privacy" | "role" | "stats" | "support" | null;
 
 function ProfilePage() {
-  const { uid } = Route.useSearch();
+  const { uid, from } = Route.useSearch();
   const { gender, vip, profileId, name: storeName, avatarUrl: storeAvatar } = useAppState();
   const navigate = useNavigate();
   const [modal, setModal] = useState<ModalKey>(null);
@@ -137,12 +138,7 @@ function ProfilePage() {
       )}
 
       {selectedImage && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 p-4" onClick={() => setSelectedImage(null)}>
-          <button className="absolute top-6 right-6 grid size-10 place-items-center rounded-full bg-white/10 text-white">
-            <X className="size-6" />
-          </button>
-          <img src={selectedImage} alt="Preview" className="max-h-[90vh] max-w-[95vw] rounded-2xl object-contain" onClick={(e) => e.stopPropagation()} />
-        </div>
+        <Lightbox src={selectedImage} onClose={() => setSelectedImage(null)} />
       )}
 
       <EditProfileModal open={modal === "edit"} onClose={() => setModal(null)} profile={profile} onSaved={() => setRefreshKey((k) => k + 1)} />
@@ -154,8 +150,8 @@ function ProfilePage() {
   );
 }
 
-function VisitorProfile({ profile, publicPhotos, vipPhotos, isUnlocked, onBack, onImageClick }: {
-  profile: DbProfile; publicPhotos: string[]; vipPhotos: string[]; isUnlocked: boolean; onBack: () => void; onImageClick: (u: string) => void;
+function VisitorProfile({ profile, publicPhotos, vipPhotos, isUnlocked, from, onBack, onImageClick }: {
+  profile: DbProfile; publicPhotos: string[]; vipPhotos: string[]; isUnlocked: boolean; from?: string; onBack: () => void; onImageClick: (u: string) => void;
 }) {
   const { vip, profileId, coins, galleryUnlocks } = useAppState();
   const [tab, setTab] = useState<"public" | "vip">("public");
@@ -186,6 +182,12 @@ function VisitorProfile({ profile, publicPhotos, vipPhotos, isUnlocked, onBack, 
 
   return (
     <div className="min-h-screen pb-32">
+      <button
+        onClick={onBack}
+        className="absolute top-4 left-4 z-30 grid size-10 place-items-center rounded-full bg-black/40 text-white backdrop-blur-sm hover:bg-black/60 transition"
+      >
+        <ArrowLeft className="size-5" />
+      </button>
       <TopBar title={profile.name} />
 
       <div className="relative mx-4 h-36 overflow-hidden rounded-3xl border border-white/10 shadow-lg">
@@ -242,7 +244,7 @@ function VisitorProfile({ profile, publicPhotos, vipPhotos, isUnlocked, onBack, 
         </div>
       )}
 
-      <button onClick={onBack} className="mx-4 mt-6 w-[calc(100%-2rem)] rounded-full border py-3 text-sm text-muted-foreground">Voltar ao Feed</button>
+      <button onClick={onBack} className="mx-4 mt-6 w-[calc(100%-2rem)] rounded-full border py-3 text-sm text-muted-foreground">{from ? "Voltar à conversa" : "Voltar ao Feed"}</button>
     </div>
   );
 }

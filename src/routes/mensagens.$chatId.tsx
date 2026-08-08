@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useParams } from "@tanstack/react-router";
+import { createFileRoute, Link, useParams, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -21,6 +21,7 @@ import { actions, useAppState } from "@/lib/hotmatch/store";
 import { useChat, type LocalMessage } from "@/hooks/use-chat";
 import { useProfiles } from "@/hooks/use-profiles";
 import { supabase } from "@/lib/supabase";
+import { Lightbox } from "@/components/hotmatch/Lightbox";
 
 export const Route = createFileRoute("/mensagens/$chatId")({
   head: () => ({
@@ -34,6 +35,7 @@ export const Route = createFileRoute("/mensagens/$chatId")({
 
 function Chat() {
   const { chatId } = useParams({ from: "/mensagens/$chatId" });
+  const navigate = useNavigate();
   const { profileId, gender, coins } = useAppState();
   const isCreator = gender === "female";
   const myId = profileId ?? "";
@@ -104,6 +106,7 @@ function Chat() {
   const [showGiftModal, setShowGiftModal] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [showReport, setShowReport] = useState(false);
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null);
 
   const [isRecording, setIsRecording] = useState(false);
   const [audioTimer, setAudioTimer] = useState(0);
@@ -305,20 +308,25 @@ function Chat() {
           <Link to="/mensagens" className="text-white/70 hover:text-white">
             <ArrowLeft className="w-6 h-6" />
           </Link>
-          <div className="relative">
-            <img
-              src={partnerAvatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400"}
-              alt={partnerName}
-              className="w-10 h-10 rounded-full object-cover border border-[#FFD700]/30"
-            />
-            <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-[#0B0B0E]" />
-          </div>
-          <div>
-            <h2 className="font-semibold text-sm leading-tight text-white flex items-center gap-1">
-              {partnerName}
-            </h2>
-            <span className="text-[10px] text-green-400 font-medium">Online agora</span>
-          </div>
+          <button
+            onClick={() => navigate({ to: "/perfil", search: { uid: partnerId, from: chatId } })}
+            className="flex items-center gap-3"
+          >
+            <div className="relative">
+              <img
+                src={partnerAvatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400"}
+                alt={partnerName}
+                className="w-10 h-10 rounded-full object-cover border border-[#FFD700]/30"
+              />
+              <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-[#0B0B0E]" />
+            </div>
+            <div className="text-left">
+              <h2 className="font-semibold text-sm leading-tight text-white flex items-center gap-1">
+                {partnerName}
+              </h2>
+              <span className="text-[10px] text-green-400 font-medium">Online agora</span>
+            </div>
+          </button>
         </div>
 
         <div className="flex items-center gap-3 text-white/80">
@@ -362,7 +370,7 @@ function Chat() {
           </span>
         </div>
         {messages.map((msg) => (
-          <MessageBubble key={msg.id} msg={msg} />
+          <MessageBubble key={msg.id} msg={msg} onImageClick={setLightboxImage} />
         ))}
         <div ref={messagesEndRef} />
       </div>
@@ -461,11 +469,15 @@ function Chat() {
           localVideoRef={localVideoRef}
         />
       )}
+
+      {lightboxImage && (
+        <Lightbox src={lightboxImage} onClose={() => setLightboxImage(null)} />
+      )}
     </div>
   );
 }
 
-function MessageBubble({ msg }: { msg: LocalMessage }) {
+function MessageBubble({ msg, onImageClick }: { msg: LocalMessage; onImageClick?: (url: string) => void }) {
   const isMe = msg.from === "me";
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playing, setPlaying] = useState(false);
@@ -547,7 +559,12 @@ function MessageBubble({ msg }: { msg: LocalMessage }) {
             {msg.media.match(/\.(mp4|webm|mov|m4v)$/i) ? (
               <video src={msg.media} controls className="rounded-xl max-w-[220px] max-h-[300px]" />
             ) : (
-              <img src={msg.media} alt="Mídia" className="rounded-xl max-w-[220px] max-h-[300px] object-cover" />
+              <img
+                src={msg.media}
+                alt="Mídia"
+                onClick={() => onImageClick?.(msg.media!)}
+                className="rounded-xl max-w-[220px] max-h-[300px] object-cover cursor-pointer"
+              />
             )}
           </div>
         ) : (
