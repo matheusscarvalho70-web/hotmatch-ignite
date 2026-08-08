@@ -35,9 +35,6 @@ function toLocal(msg: DbChatMessage, myId: string): LocalMessage {
   };
 }
 
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 export type UseChatOptions = {
   partnerId: string;
   partnerName?: string;
@@ -78,52 +75,13 @@ export function useChat({ partnerId, partnerName, isDemo }: UseChatOptions) {
     };
   }, []);
 
-  // 2) Valida que partnerId é um UUID válido e existe na tabela profiles.
+  // 2) Define o partnerUuid de forma flexível para evitar travamentos
   useEffect(() => {
-    let cancelled = false;
     if (!partnerId) {
       setPartnerUuid(null);
       return;
     }
-    if (!UUID_RE.test(partnerId)) {
-      console.error(
-        "[Chat] partnerId não é um UUID válido:",
-        partnerId,
-        "— verifique se o chatId da rota é um UUID real da tabela profiles.",
-      );
-      setPartnerUuid(null);
-      return;
-    }
-    (async () => {
-      try {
-        const { data, error } = await supabase
-          .from("profiles")
-          .select("id")
-          .eq("id", partnerId)
-          .maybeSingle();
-        if (cancelled) return;
-        if (error) {
-          console.error("[Chat] Erro ao validar partnerId em profiles:", error);
-          setPartnerUuid(null);
-          return;
-        }
-        if (!data) {
-          console.error(
-            "[Chat] partnerId não encontrado na tabela profiles:",
-            partnerId,
-          );
-          setPartnerUuid(null);
-          return;
-        }
-        setPartnerUuid(data.id);
-      } catch (err) {
-        console.error("[Chat] Falha ao validar partnerId:", err);
-        setPartnerUuid(null);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
+    setPartnerUuid(partnerId);
   }, [partnerId]);
 
   // Usa o auth.uid() real; storeMyId serve apenas como fallback de exibição.
@@ -204,7 +162,7 @@ export function useChat({ partnerId, partnerName, isDemo }: UseChatOptions) {
     }
     if (!partnerUuid) {
       console.error(
-        "[Chat] sendMessage cancelado: partnerId não resolvido para UUID válido.",
+        "[Chat] sendMessage cancelado: partnerId não resolvido.",
       );
       toast.error("Destinatário inválido. Verifique o perfil do parceiro.");
       return;
@@ -252,7 +210,7 @@ export function useChat({ partnerId, partnerName, isDemo }: UseChatOptions) {
     }
     if (!partnerUuid) {
       console.error(
-        "[Chat] sendAudioMessage cancelado: partnerId não resolvido para UUID válido.",
+        "[Chat] sendAudioMessage cancelado: partnerId não resolvido.",
       );
       toast.error("Destinatário inválido. Verifique o perfil do parceiro.");
       return;
@@ -303,7 +261,7 @@ export function useChat({ partnerId, partnerName, isDemo }: UseChatOptions) {
     }
     if (!partnerUuid) {
       console.error(
-        "[Chat] sendGiftMessage cancelado: partnerId não resolvido para UUID válido.",
+        "[Chat] sendGiftMessage cancelado: partnerId não resolvido.",
       );
       toast.error("Destinatário inválido. Verifique o perfil do parceiro.");
       return;
@@ -351,7 +309,6 @@ export function useChat({ partnerId, partnerName, isDemo }: UseChatOptions) {
   };
 }
 
-/** Best-effort: look up partner's OneSignal player ID and call notify-user edge function */
 async function notifyPartner(
   receiverId: string,
   title: string,
