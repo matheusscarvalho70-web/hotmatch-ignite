@@ -6,7 +6,6 @@ import {
   Coins,
   Flag,
   Gift,
-  Lock,
   Mic,
   MoreVertical,
   Phone,
@@ -25,12 +24,18 @@ import { useProfiles } from "@/hooks/use-profiles";
 import { supabase } from "@/lib/supabase";
 
 export const Route = createFileRoute("/mensagens/$chatId")({
+  head: () => ({
+    meta: [
+      { title: "Conversa — HotMatch" },
+      { name: "description", content: "Chat em tempo real, áudios, presentes e chamadas." },
+    ],
+  }),
   component: Chat,
 });
 
 function Chat() {
   const { chatId } = useParams({ from: "/mensagens/$chatId" });
-  const { unlocked, profileId, gender, coins } = useAppState();
+  const { profileId, gender, coins } = useAppState();
   const isCreator = gender === "female";
   const myId = profileId ?? "";
   const partnerId = chatId;
@@ -98,8 +103,6 @@ function Chat() {
 
   const [inputText, setInputText] = useState("");
   const [showGiftModal, setShowGiftModal] = useState(false);
-  const [showPaywall, setShowPaywall] = useState(false);
-  const [pendingText, setPendingText] = useState("");
   const [showMenu, setShowMenu] = useState(false);
   const [showReport, setShowReport] = useState(false);
 
@@ -110,6 +113,8 @@ function Chat() {
   const audioChunksRef = useRef<Blob[]>([]);
 
   const [callState, setCallState] = useState<"idle" | "voice" | "video">("idle");
+  const callStreamRef = useRef<MediaStream | null>(null);
+  const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -122,23 +127,8 @@ function Chat() {
 
   const handleSend = () => {
     if (!inputText.trim()) return;
-    if (!isCreator && !unlocked && !dbPartner?.is_demo && hasMutualMatch === false) {
-      setPendingText(inputText);
-      setShowPaywall(true);
-      return;
-    }
     sendMessage(inputText, "text");
     setInputText("");
-  };
-
-  const handleUnlockAndSend = () => {
-    actions.unlockChat();
-    setShowPaywall(false);
-    if (pendingText) {
-      sendMessage(pendingText, "text");
-      setPendingText("");
-    }
-    toast.success("Chat desbloqueado com sucesso!");
   };
 
   const handleSendGift = (gift: (typeof gifts)[0]) => {
@@ -235,25 +225,27 @@ function Chat() {
     try {
       const constraints = type === "video" ? { audio: true, video: true } : { audio: true };
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      (startCall as any)._stream = stream;
+      callStreamRef.current = stream;
       setCallState(type);
+      if (type === "video" && localVideoRef.current) {
+        localVideoRef.current.srcObject = stream;
+        localVideoRef.current.play().catch(() => {});
+      }
     } catch {
       toast.error("Não foi possível acessar o microfone/câmera.");
     }
   };
 
   const endCall = () => {
-    const stream = (startCall as any)._stream as MediaStream | undefined;
-    stream?.getTracks().forEach((t) => t.stop());
-    (startCall as any)._stream = null;
+    callStreamRef.current?.getTracks().forEach((t) => t.stop());
+    callStreamRef.current = null;
     setCallState("idle");
   };
 
   useEffect(() => {
     return () => {
       if (audioIntervalRef.current) clearInterval(audioIntervalRef.current);
-      const stream = (startCall as any)._stream as MediaStream | undefined;
-      stream?.getTracks().forEach((t) => t.stop());
+      callStreamRef.current?.getTracks().forEach((t) => t.stop());
     };
   }, []);
 
@@ -403,39 +395,18 @@ function Chat() {
         </div>
       )}
 
-      {showPaywall && (
-        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-[#121218] border border-white/10 w-full max-w-sm rounded-3xl p-6 text-center space-y-5 shadow-2xl">
-            <div className="w-16 h-16 bg-[#FFD700]/10 border border-[#FFD700]/30 rounded-full flex items-center justify-center mx-auto text-[#FFD700]">
-              <Lock className="w-8 h-8" />
-            </div>
-            <div className="space-y-2">
-              <h3 className="text-xl font-bold text-white">Desbloquear Chat Ilimitado</h3>
-              <p className="text-xs text-white/60 leading-relaxed">
-                Para conversar livremente com {partnerName}, desbloqueie o VIP.
-              </p>
-            </div>
-            <div className="space-y-2">
-              <button
-                onClick={handleUnlockAndSend}
-                className="w-full py-3 bg-gradient-to-r from-[#FFD700] to-[#FFA500] text-black font-bold rounded-full text-sm"
-              >
-                Desbloquear Agora
-              </button>
-              <button onClick={() => setShowPaywall(false)} className="w-full py-2.5 text-white/50 text-xs font-medium">
-                Agora não
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {showReport && (
         <ReportModal partnerName={partnerName} onClose={() => setShowReport(false)} onSubmit={handleReportSubmit} />
       )}
 
       {callState !== "idle" && (
-        <CallOverlay type={callState} partnerName={partnerName} partnerAvatar={partnerAvatar} onEnd={endCall} />
+        <CallOverlay
+          type={callState}
+          partnerName={partnerName}
+          partnerAvatar={partnerAvatar}
+          onEnd={endCall}
+          localVideoRef={localVideoRef}
+        />
       )}
     </div>
   );
@@ -523,4 +494,130 @@ function ReportModal({
   onSubmit: (subject: string, description: string) => void;
 }) {
   const [subject, setSubject] = useState("");
-  const [description, setDescripti
+  const [description, setDescription] = useState("");
+
+  return (
+    <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
+      <div className="bg-[#121218] border border-white/10 w-full max-w-sm rounded-3xl p-6 space-y-4 shadow-2xl">
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-bold text-white flex items-center gap-2">
+            <Flag className="w-5 h-5 text-orange-400" /> Denunciar {partnerName}
+          </h3>
+          <button onClick={onClose} className="text-white/50 hover:text-white">
+            <X className="w-6 h-6" />
+          </button>
+        </div>
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs font-semibold text-white/60 block mb-1.5">Assunto</label>
+            <input
+              type="text"
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              placeholder="Ex: Comportamento inadequado"
+              className="w-full bg-[#1C1C24] text-white placeholder-white/40 text-sm px-4 py-2.5 rounded-xl border border-white/10 focus:outline-none focus:border-[#FFD700]"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-white/60 block mb-1.5">Descrição (opcional)</label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Descreva o ocorrido..."
+              rows={3}
+              className="w-full bg-[#1C1C24] text-white placeholder-white/40 text-sm px-4 py-2.5 rounded-xl border border-white/10 focus:outline-none focus:border-[#FFD700] resize-none"
+            />
+          </div>
+        </div>
+        <div className="flex gap-3">
+          <button
+            onClick={onClose}
+            className="flex-1 py-2.5 rounded-full border border-white/10 text-white/60 text-sm font-medium hover:bg-white/5 transition"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={() => onSubmit(subject, description)}
+            className="flex-[1.4] py-2.5 rounded-full bg-gradient-to-r from-[#FFD700] to-[#FFA500] text-black text-sm font-bold"
+          >
+            Enviar Denúncia
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CallOverlay({
+  type,
+  partnerName,
+  partnerAvatar,
+  onEnd,
+  localVideoRef,
+}: {
+  type: "voice" | "video";
+  partnerName: string;
+  partnerAvatar: string | null;
+  onEnd: () => void;
+  localVideoRef: React.RefObject<HTMLVideoElement | null>;
+}) {
+  const [callDuration, setCallDuration] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    timerRef.current = setInterval(() => {
+      setCallDuration((prev) => prev + 1);
+    }, 1000);
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, []);
+
+  const formatTime = (s: number) => {
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${m}:${sec < 10 ? `0${sec}` : sec}`;
+  };
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-[#0B0B0E] flex flex-col items-center justify-between py-12 px-6">
+      <div className="flex flex-col items-center gap-3 mt-8">
+        <div className="relative">
+          <img
+            src={partnerAvatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400"}
+            alt={partnerName}
+            className={`rounded-full object-cover border-2 border-[#FFD700]/40 ${type === "video" ? "w-28 h-28" : "w-32 h-32"}`}
+          />
+          {type === "voice" && (
+            <div className="absolute inset-0 rounded-full border-2 border-[#FFD700]/20 animate-ping" />
+          )}
+        </div>
+        <h2 className="text-xl font-bold text-white mt-2">{partnerName}</h2>
+        <p className="text-sm text-green-400 font-medium">
+          {type === "video" ? "Chamada de vídeo" : "Chamada de voz"} · {formatTime(callDuration)}
+        </p>
+      </div>
+
+      {type === "video" && (
+        <div className="absolute bottom-32 right-6 w-32 h-44 rounded-2xl overflow-hidden border-2 border-white/20 bg-black shadow-2xl">
+          <video
+            ref={localVideoRef}
+            autoPlay
+            playsInline
+            muted
+            className="w-full h-full object-cover scale-x-[-1]"
+          />
+        </div>
+      )}
+
+      <div className="flex items-center gap-6">
+        <button
+          onClick={onEnd}
+          className="w-16 h-16 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center transition shadow-lg shadow-red-500/30"
+        >
+          <PhoneOff className="w-7 h-7 text-white" />
+        </button>
+      </div>
+    </div>
+  );
+}
