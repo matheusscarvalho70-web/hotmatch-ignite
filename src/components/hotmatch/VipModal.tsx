@@ -6,12 +6,10 @@ import { actions, useAppState } from "@/lib/hotmatch/store";
 type Props = { open: boolean; onClose: () => void };
 
 const VIP_PERKS = [
-  "Acesso ilimitado ao Feed VIP",
-  "Super Curtidas ilimitadas por dia",
+  "Super Likes ilimitados todos os dias",
   "Veja quem curtiu seu perfil",
-  "Boost de visibilidade 3× mais alto",
-  "Badge VIP exclusivo no perfil",
-  "Descontos em pacotes de moedas",
+  "20% de desconto em mimos e presentes",
+  "Destaque dourado no Feed e no Descobrir",
 ];
 
 export function VipModal({ open, onClose }: Props) {
@@ -20,7 +18,7 @@ export function VipModal({ open, onClose }: Props) {
 
   function activate() {
     if (coins < 200) {
-      toast.error("Saldo insuficiente. Recarregue moedas para ativar o VIP.");
+      toast.error("Saldo insuficiente. Recarregue moedas para ativar o VIP (200 moedas = R$ 39,90).");
       return;
     }
     actions.spendCoins(200);
@@ -114,7 +112,7 @@ export function VipModal({ open, onClose }: Props) {
               <div className="flex items-end justify-between rounded-2xl border border-gold/30 bg-gold/5 px-4 py-3">
                 <div>
                   <p className="text-[11px] text-muted-foreground">Custo de ativação</p>
-                  <p className="text-2xl font-extrabold text-gold">200 moedas</p>
+                  <p className="text-2xl font-extrabold text-gold">R$ 39,90<span className="text-sm font-medium text-muted-foreground">/mês</span></p>
                 </div>
                 <span className="rounded-full bg-primary/20 px-2 py-1 text-[10px] font-bold text-primary">
                   Mensal

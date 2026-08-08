@@ -24,6 +24,7 @@ export type DbProfile = {
   longitude: number | null;
   public_photos: string[] | null;
   vip_photos: string[] | null;
+  gallery_price: number;
   created_at: string;
 };
 

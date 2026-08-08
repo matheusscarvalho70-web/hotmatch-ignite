@@ -29,8 +29,7 @@ export const Route = createFileRoute("/perfil")({
   component: ProfilePage,
 });
 
-const VIP_PRICE = 15;
-const VIP_PRICE_DISCOUNT = 10;
+const VIP_DEFAULT_PRICE = 15;
 type ModalKey = "edit" | "privacy" | "role" | "stats" | "support" | null;
 
 function ProfilePage() {
@@ -159,7 +158,7 @@ function VisitorProfile({ profile, publicPhotos, vipPhotos, isUnlocked, from, on
   const [unlocked, setUnlocked] = useState(isUnlocked || galleryUnlocks.includes(profile.id));
   const [paying, setPaying] = useState(false);
 
-  const price = vip ? VIP_PRICE_DISCOUNT : VIP_PRICE;
+  const price = profile.gallery_price || VIP_DEFAULT_PRICE;
   const hasPublic = publicPhotos.length > 0;
   const hasVip = vipPhotos.length > 0;
 
