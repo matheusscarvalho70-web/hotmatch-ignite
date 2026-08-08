@@ -1,7 +1,6 @@
 import { createFileRoute, Link, useParams } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import {
-  AlertTriangle,
   ArrowLeft,
   Ban,
   Coins,
@@ -15,10 +14,7 @@ import {
   Play,
   Pause,
   Send,
-  Shield,
   Video,
-  VideoOff,
-  Volume2,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -526,4 +522,5 @@ function ReportModal({
   onClose: () => void;
   onSubmit: (subject: string, description: string) => void;
 }) {
-  const [subject, setSubject] 
+  const [subject, setSubject] = useState("");
+  const [description, setDescripti
