@@ -75,7 +75,8 @@ function ProfilePage() {
         publicPhotos={livePublic}
         vipPhotos={liveVip}
         isUnlocked={dbUnlocks.includes(targetId)}
-        onBack={() => navigate({ to: "/feed" })}
+        from={from}
+        onBack={() => from ? navigate({ to: "/mensagens/$chatId", params: { chatId: from } }) : navigate({ to: "/feed" })}
         onImageClick={setSelectedImage}
       />
     );
@@ -244,7 +245,7 @@ function VisitorProfile({ profile, publicPhotos, vipPhotos, isUnlocked, from, on
         </div>
       )}
 
-      <button onClick={onBack} className="mx-4 mt-6 w-[calc(100%-2rem)] rounded-full border py-3 text-sm text-muted-foreground">{from ? "Voltar à conversa" : "Voltar ao Feed"}</button>
+      <button onClick={onBack} className="mx-4 mt-6 w-[calc(100%-2rem)] rounded-full border py-3 text-sm text-muted-foreground">{from ? "Voltar ao Chat" : "Voltar ao Feed"}</button>
     </div>
   );
 }
