@@ -49,10 +49,8 @@ export function useChat({ partnerId, partnerName, isDemo }: UseChatOptions) {
   const [loading, setLoading] = useState(true);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
-  // Usa o perfil da store ou um fallback de ID válido para evitar bloqueios
   const myId = storeMyId || "7f56165e-1173-40df-bc95-d2cdb59a2399";
 
-  // Define o partnerUuid de forma flexível para evitar travamentos
   useEffect(() => {
     if (!partnerId) {
       setPartnerUuid(null);
@@ -128,8 +126,7 @@ export function useChat({ partnerId, partnerName, isDemo }: UseChatOptions) {
     kind: "text" | "gift" | "audio" = "text",
   ): Promise<void> {
     if (!partnerUuid) {
-      console.error("[Chat] sendMessage cancelado: partnerId não resolvido.");
-      toast.error("Destinatário inválido. Verifique o perfil do parceiro.");
+      toast.error("Destinatário inválido.");
       return;
     }
     try {
@@ -145,10 +142,7 @@ export function useChat({ partnerId, partnerName, isDemo }: UseChatOptions) {
         .select()
         .single();
 
-      if (error) {
-        alert("Erro Supabase: " + JSON.stringify(error));
-        throw error;
-      }
+      if (error) throw error;
 
       if (data) {
         const local = toLocal(data as DbChatMessage, myId);
@@ -160,7 +154,7 @@ export function useChat({ partnerId, partnerName, isDemo }: UseChatOptions) {
 
       notifyPartner(partnerUuid, "Nova mensagem!", text);
     } catch (err) {
-      console.error("Erro detalhado Supabase:", err);
+      console.error("Erro ao enviar mensagem:", err);
     }
   }
 
@@ -168,9 +162,9 @@ export function useChat({ partnerId, partnerName, isDemo }: UseChatOptions) {
     mediaUrl: string,
     seconds: number,
   ): Promise<void> {
+    alert("Iniciando envio de áudio... URL: " + mediaUrl);
     if (!partnerUuid) {
-      console.error("[Chat] sendAudioMessage cancelado: partnerId não resolvido.");
-      toast.error("Destinatário inválido. Verifique o perfil do parceiro.");
+      alert("Erro: partnerUuid vazio no áudio");
       return;
     }
     try {
@@ -193,6 +187,8 @@ export function useChat({ partnerId, partnerName, isDemo }: UseChatOptions) {
         throw error;
       }
 
+      alert("Áudio enviado com sucesso!");
+
       if (data) {
         const local = toLocal(data as DbChatMessage, myId);
         setMessages((prev) => {
@@ -202,7 +198,8 @@ export function useChat({ partnerId, partnerName, isDemo }: UseChatOptions) {
       }
 
       notifyPartner(partnerUuid, "🎤 Áudio recebido", "Novo áudio para você");
-    } catch (err) {
+    } catch (err: any) {
+      alert("Catch erro áudio: " + (err?.message || JSON.stringify(err)));
       console.error("Erro detalhado Supabase:", err);
     }
   }
@@ -212,11 +209,7 @@ export function useChat({ partnerId, partnerName, isDemo }: UseChatOptions) {
     name: string,
     price: number,
   ): Promise<void> {
-    if (!partnerUuid) {
-      console.error("[Chat] sendGiftMessage cancelado: partnerId não resolvido.");
-      toast.error("Destinatário inválido. Verifique o perfil do parceiro.");
-      return;
-    }
+    if (!partnerUuid) return;
     try {
       const insertPayload = {
         sender_id: myId,
@@ -231,10 +224,7 @@ export function useChat({ partnerId, partnerName, isDemo }: UseChatOptions) {
         .select()
         .single();
 
-      if (error) {
-        alert("Erro Supabase (Mimo): " + JSON.stringify(error));
-        throw error;
-      }
+      if (error) throw error;
 
       if (data) {
         const local = toLocal(data as DbChatMessage, myId);
@@ -246,7 +236,7 @@ export function useChat({ partnerId, partnerName, isDemo }: UseChatOptions) {
 
       notifyPartner(partnerUuid, `${emoji} Mimo recebido`, `Você ganhou: ${name}`);
     } catch (err) {
-      console.error("Erro detalhado Supabase:", err);
+      console.error("Erro ao enviar mimo:", err);
     }
   }
 
@@ -284,5 +274,5 @@ async function notifyPartner(
   } catch (e) {
     console.warn("[Push] notifyPartner failed:", e);
   }
-              }
+                    }
     
