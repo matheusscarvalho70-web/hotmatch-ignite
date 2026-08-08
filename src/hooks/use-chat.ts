@@ -162,11 +162,7 @@ export function useChat({ partnerId, partnerName, isDemo }: UseChatOptions) {
     mediaUrl: string,
     seconds: number,
   ): Promise<void> {
-    alert("Iniciando envio de áudio... URL: " + mediaUrl);
-    if (!partnerUuid) {
-      alert("Erro: partnerUuid vazio no áudio");
-      return;
-    }
+    if (!partnerUuid) return;
     try {
       const insertPayload = {
         sender_id: myId,
@@ -182,12 +178,7 @@ export function useChat({ partnerId, partnerName, isDemo }: UseChatOptions) {
         .select()
         .single();
 
-      if (error) {
-        alert("Erro Supabase (Áudio): " + JSON.stringify(error));
-        throw error;
-      }
-
-      alert("Áudio enviado com sucesso!");
+      if (error) throw error;
 
       if (data) {
         const local = toLocal(data as DbChatMessage, myId);
@@ -199,8 +190,7 @@ export function useChat({ partnerId, partnerName, isDemo }: UseChatOptions) {
 
       notifyPartner(partnerUuid, "🎤 Áudio recebido", "Novo áudio para você");
     } catch (err: any) {
-      alert("Catch erro áudio: " + (err?.message || JSON.stringify(err)));
-      console.error("Erro detalhado Supabase:", err);
+      console.error("Erro ao enviar áudio:", err);
     }
   }
 

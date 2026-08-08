@@ -146,22 +146,31 @@ function Chat() {
   const startAudioRecord = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm")
+        ? "audio/webm"
+        : MediaRecorder.isTypeSupported("audio/mp4")
+          ? "audio/mp4"
+          : "";
+      const recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
+      const ext = mimeType.includes("mp4") ? "mp4" : "webm";
       audioChunksRef.current = [];
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) audioChunksRef.current.push(e.data);
       };
       recorder.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
-        const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+        const blobType = mimeType || "audio/webm";
+        const blob = new Blob(audioChunksRef.current, { type: blobType });
         const seconds = audioSecondsRef.current;
         if (blob.size > 0 && seconds > 0) {
           toast.loading("Enviando áudio...", { id: "audio-upload" });
           try {
-            const fileName = `audio_${Date.now()}.webm`;
+            const fileName = `audio_${Date.now()}.${ext}`;
             const { error: uploadError } = await supabase.storage
               .from("chat-media")
-              .upload(`chat-audio/${fileName}`, blob, { contentType: "audio/webm" });
+              .upload(`chat-audio/${fileName}`, blob, { contentType: blobType });
             if (uploadError) throw uploadError;
             const { data: urlData } = supabase.storage
               .from("chat-media")
@@ -196,7 +205,6 @@ function Chat() {
     }
     setIsRecording(false);
     setAudioTimer(0);
-    audioSecondsRef.current = 0;
   };
 
   const handleBlock = () => {
