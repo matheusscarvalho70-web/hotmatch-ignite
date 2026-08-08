@@ -112,14 +112,15 @@ export function useChat({ partnerId, partnerName, isDemo }: UseChatOptions) {
   async function sendMessage(text: string, kind: "text" | "gift" | "audio" = "text"): Promise<void> {
     if (!myId) return;
     try {
+      const insertPayload = {
+        sender_id: myId,
+        receiver_id: partnerId,
+        content: text,
+        message_kind: kind,
+      };
       const { data, error } = await supabase
         .from("chat_messages")
-        .insert({
-          sender_id: myId,
-          receiver_id: partnerId,
-          content: text,
-          message_kind: kind,
-        })
+        .insert(insertPayload)
         .select()
         .single();
 
@@ -135,7 +136,10 @@ export function useChat({ partnerId, partnerName, isDemo }: UseChatOptions) {
 
       notifyPartner(partnerId, "Nova mensagem!", text);
     } catch (err) {
-      console.error("[Chat] sendMessage error:", err);
+      // RLS: se o erro for de permissão, verifique as políticas da tabela
+      // `chat_messages` no painel do Supabase para permitir inserções onde
+      // `sender_id` seja o usuário atual (auth.uid()).
+      console.error("Erro detalhado Supabase:", err);
       toast.error("Erro ao enviar mensagem. Tente novamente.");
     }
   }
@@ -143,16 +147,17 @@ export function useChat({ partnerId, partnerName, isDemo }: UseChatOptions) {
   async function sendAudioMessage(mediaUrl: string, seconds: number): Promise<void> {
     if (!myId) return;
     try {
+      const insertPayload = {
+        sender_id: myId,
+        receiver_id: partnerId,
+        media_url: mediaUrl,
+        audio_seconds: seconds,
+        message_kind: "audio" as const,
+        content: `Áudio (${seconds}s)`,
+      };
       const { data, error } = await supabase
         .from("chat_messages")
-        .insert({
-          sender_id: myId,
-          receiver_id: partnerId,
-          media_url: mediaUrl,
-          audio_seconds: seconds,
-          message_kind: "audio",
-          content: `Áudio (${seconds}s)`,
-        })
+        .insert(insertPayload)
         .select()
         .single();
 
@@ -168,7 +173,10 @@ export function useChat({ partnerId, partnerName, isDemo }: UseChatOptions) {
 
       notifyPartner(partnerId, "🎤 Áudio recebido", "Novo áudio para você");
     } catch (err) {
-      console.error("[Chat] sendAudioMessage error:", err);
+      // RLS: se o erro for de permissão, verifique as políticas da tabela
+      // `chat_messages` no painel do Supabase para permitir inserções onde
+      // `sender_id` seja o usuário atual (auth.uid()).
+      console.error("Erro detalhado Supabase:", err);
       toast.error("Erro ao enviar áudio. Tente novamente.");
     }
   }
@@ -176,15 +184,16 @@ export function useChat({ partnerId, partnerName, isDemo }: UseChatOptions) {
   async function sendGiftMessage(emoji: string, name: string, price: number): Promise<void> {
     if (!myId) return;
     try {
+      const insertPayload = {
+        sender_id: myId,
+        receiver_id: partnerId,
+        content: `${emoji} ${name}`,
+        message_kind: "gift" as const,
+        unlock_price: price,
+      };
       const { data, error } = await supabase
         .from("chat_messages")
-        .insert({
-          sender_id: myId,
-          receiver_id: partnerId,
-          content: `${emoji} ${name}`,
-          message_kind: "gift",
-          unlock_price: price,
-        })
+        .insert(insertPayload)
         .select()
         .single();
 
@@ -200,7 +209,10 @@ export function useChat({ partnerId, partnerName, isDemo }: UseChatOptions) {
 
       notifyPartner(partnerId, `${emoji} Mimo recebido`, `Você ganhou: ${name}`);
     } catch (err) {
-      console.error("[Chat] sendGiftMessage error:", err);
+      // RLS: se o erro for de permissão, verifique as políticas da tabela
+      // `chat_messages` no painel do Supabase para permitir inserções onde
+      // `sender_id` seja o usuário atual (auth.uid()).
+      console.error("Erro detalhado Supabase:", err);
       toast.error("Erro ao enviar mimo. Tente novamente.");
     }
   }
