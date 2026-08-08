@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase, type DbChatMessage } from "@/lib/supabase";
 import { useAppState } from "@/lib/hotmatch/store";
+import { toast } from "sonner";
 
 export type LocalMessage = {
   id: string;
@@ -109,64 +110,99 @@ export function useChat({ partnerId, partnerName, isDemo }: UseChatOptions) {
   }, [myId, partnerId]);
 
   async function sendMessage(text: string, kind: "text" | "gift" | "audio" = "text"): Promise<void> {
-    if (!myId || !text.trim()) return;
+    if (!myId) return;
     try {
-      if (kind === "gift") {
-        await supabase.from("chat_messages").insert({
+      const { data, error } = await supabase
+        .from("chat_messages")
+        .insert({
           sender_id: myId,
           receiver_id: partnerId,
           content: text,
-          message_kind: "gift",
-        });
-      } else if (kind === "audio") {
-        await supabase.from("chat_messages").insert({
-          sender_id: myId,
-          receiver_id: partnerId,
-          content: text,
-          message_kind: "audio",
-        });
-      } else {
-        await supabase.from("chat_messages").insert({
-          sender_id: myId,
-          receiver_id: partnerId,
-          content: text,
-          message_kind: "text",
+          message_kind: kind,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      if (data) {
+        const local = toLocal(data as DbChatMessage, myId);
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === local.id)) return prev;
+          return [...prev, local];
         });
       }
+
       notifyPartner(partnerId, "Nova mensagem!", text);
     } catch (err) {
       console.error("[Chat] sendMessage error:", err);
+      toast.error("Erro ao enviar mensagem. Tente novamente.");
     }
   }
 
   async function sendAudioMessage(mediaUrl: string, seconds: number): Promise<void> {
     if (!myId) return;
     try {
-      const { error } = await supabase.from("chat_messages").insert({
-        sender_id: myId,
-        receiver_id: partnerId,
-        media_url: mediaUrl,
-        audio_seconds: seconds,
-        message_kind: "audio",
-        content: `Áudio (${seconds}s)`,
-      });
-      if (error) console.error("[Chat] sendAudioMessage Supabase error:", error);
+      const { data, error } = await supabase
+        .from("chat_messages")
+        .insert({
+          sender_id: myId,
+          receiver_id: partnerId,
+          media_url: mediaUrl,
+          audio_seconds: seconds,
+          message_kind: "audio",
+          content: `Áudio (${seconds}s)`,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      if (data) {
+        const local = toLocal(data as DbChatMessage, myId);
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === local.id)) return prev;
+          return [...prev, local];
+        });
+      }
+
       notifyPartner(partnerId, "🎤 Áudio recebido", "Novo áudio para você");
     } catch (err) {
-      console.error("[Chat] sendAudioMessage exception:", err);
+      console.error("[Chat] sendAudioMessage error:", err);
+      toast.error("Erro ao enviar áudio. Tente novamente.");
     }
   }
 
   async function sendGiftMessage(emoji: string, name: string, price: number): Promise<void> {
     if (!myId) return;
-    await supabase.from("chat_messages").insert({
-      sender_id: myId,
-      receiver_id: partnerId,
-      content: `${emoji} ${name}`,
-      message_kind: "gift",
-      unlock_price: price,
-    });
-    notifyPartner(partnerId, `${emoji} Mimo recebido`, `Você ganhou: ${name}`);
+    try {
+      const { data, error } = await supabase
+        .from("chat_messages")
+        .insert({
+          sender_id: myId,
+          receiver_id: partnerId,
+          content: `${emoji} ${name}`,
+          message_kind: "gift",
+          unlock_price: price,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      if (data) {
+        const local = toLocal(data as DbChatMessage, myId);
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === local.id)) return prev;
+          return [...prev, local];
+        });
+      }
+
+      notifyPartner(partnerId, `${emoji} Mimo recebido`, `Você ganhou: ${name}`);
+    } catch (err) {
+      console.error("[Chat] sendGiftMessage error:", err);
+      toast.error("Erro ao enviar mimo. Tente novamente.");
+    }
   }
 
   return { messages, loading, sendMessage, sendAudioMessage, sendGiftMessage, myId, partnerName, isDemo };
