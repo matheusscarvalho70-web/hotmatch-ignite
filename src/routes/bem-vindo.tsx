@@ -336,17 +336,24 @@ function SignupFlow({ open, onOpenChange, gender }: {
     }
   }, [open]);
 
+  /* When camPhase transitions to "active" the <video> element mounts.
+     Attach the stream + play in this effect so the ref is non-null. */
+  useEffect(() => {
+    if (camPhase !== "active" || !streamRef.current) return;
+    const el = videoRef.current;
+    if (!el) return;
+    el.srcObject = streamRef.current;
+    el.play().catch(() => {});
+  }, [camPhase]);
+
   /* Camera helpers */
   async function startCamera() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+      audio: false,
       });
       streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
       setCamPhase("active");
     } catch {
       toast.error("Câmera indisponível. Verifique as permissões do navegador.");

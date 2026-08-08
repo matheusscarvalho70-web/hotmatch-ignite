@@ -111,6 +111,7 @@ function Chat() {
   const audioIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const audioSecondsRef = useRef(0);
 
   const [callState, setCallState] = useState<"idle" | "voice" | "video">("idle");
   const callStreamRef = useRef<MediaStream | null>(null);
@@ -153,7 +154,7 @@ function Chat() {
       recorder.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
         const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
-        const seconds = audioTimer;
+        const seconds = audioSecondsRef.current;
         if (blob.size > 0 && seconds > 0) {
           toast.loading("Enviando áudio...", { id: "audio-upload" });
           try {
@@ -177,8 +178,10 @@ function Chat() {
       mediaRecorderRef.current = recorder;
       setIsRecording(true);
       setAudioTimer(0);
+      audioSecondsRef.current = 0;
       audioIntervalRef.current = setInterval(() => {
-        setAudioTimer((prev) => prev + 1);
+        audioSecondsRef.current += 1;
+        setAudioTimer(audioSecondsRef.current);
       }, 1000);
     } catch (err) {
       toast.error("Não foi possível acessar o microfone.");
@@ -193,6 +196,7 @@ function Chat() {
     }
     setIsRecording(false);
     setAudioTimer(0);
+    audioSecondsRef.current = 0;
   };
 
   const handleBlock = () => {
@@ -227,14 +231,20 @@ function Chat() {
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       callStreamRef.current = stream;
       setCallState(type);
-      if (type === "video" && localVideoRef.current) {
-        localVideoRef.current.srcObject = stream;
-        localVideoRef.current.play().catch(() => {});
-      }
     } catch {
       toast.error("Não foi possível acessar o microfone/câmera.");
     }
   };
+
+  /* After CallOverlay mounts (callState !== "idle"), attach the stream to
+     the local <video> element. The ref is null until the overlay renders. */
+  useEffect(() => {
+    if (callState === "idle" || !callStreamRef.current) return;
+    if (callState === "video" && localVideoRef.current) {
+      localVideoRef.current.srcObject = callStreamRef.current;
+      localVideoRef.current.play().catch(() => {});
+    }
+  }, [callState]);
 
   const endCall = () => {
     callStreamRef.current?.getTracks().forEach((t) => t.stop());
