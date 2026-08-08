@@ -138,15 +138,15 @@ export const chats: Chat[] = [
   { id: "u4", profile: profiles[3], last: "Kkkk você é engraçado", time: "Ter", unread: 0 },
 ];
 
-export type Gift = { id: string; name: string; emoji: string; price: number };
+export type Gift = { id: string; name: string; emoji: string; price: number; color: string };
 
 export const gifts: Gift[] = [
-  { id: "g1", name: "Drink", emoji: "🍸", price: 10 },
-  { id: "g2", name: "Chocolate", emoji: "🍫", price: 25 },
-  { id: "g3", name: "Buquê", emoji: "💐", price: 50 },
-  { id: "g4", name: "Anel", emoji: "💍", price: 100 },
-  { id: "g5", name: "Coroa VIP", emoji: "👑", price: 200 },
-  { id: "g6", name: "Foguete", emoji: "🚀", price: 500 },
+  { id: "g1", name: "Drink", emoji: "🍸", price: 10, color: "#60a5fa" },
+  { id: "g2", name: "Chocolate", emoji: "🍫", price: 25, color: "#d97706" },
+  { id: "g3", name: "Buquê", emoji: "💐", price: 50, color: "#ec4899" },
+  { id: "g4", name: "Anel", emoji: "💍", price: 100, color: "#fbbf24" },
+  { id: "g5", name: "Coroa VIP", emoji: "👑", price: 200, color: "#a78bfa" },
+  { id: "g6", name: "Foguete", emoji: "🚀", price: 500, color: "#f87171" },
 ];
 
 export type Message = {

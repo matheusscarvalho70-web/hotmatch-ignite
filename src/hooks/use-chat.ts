@@ -34,7 +34,13 @@ function toLocal(msg: DbChatMessage, myId: string): LocalMessage {
   };
 }
 
-export function useChat(partnerId: string) {
+export type UseChatOptions = {
+  partnerId: string;
+  partnerName?: string;
+  isDemo?: boolean;
+};
+
+export function useChat({ partnerId, partnerName, isDemo }: UseChatOptions) {
   const { profileId } = useAppState();
   const myId = profileId ?? "";
   const [messages, setMessages] = useState<LocalMessage[]>([]);
@@ -61,7 +67,7 @@ export function useChat(partnerId: string) {
           .limit(100);
 
         if (!cancelled) {
-          if (!error && data) setMessages(data.map((m) => toLocal(m, myId)));
+          if (!error && data) setMessages(data.map((m) => toLocal(m as DbChatMessage, myId)));
           setLoading(false);
         }
       } catch {
@@ -102,79 +108,56 @@ export function useChat(partnerId: string) {
     };
   }, [myId, partnerId]);
 
-  async function sendText(text: string): Promise<{ error: Error | null }> {
-    if (!myId) return { error: new Error("Not logged in") };
+  async function sendMessage(text: string, kind: "text" | "gift" | "audio" = "text"): Promise<void> {
+    if (!myId || !text.trim()) return;
     try {
-      const { error } = await supabase.from("chat_messages").insert({
-        sender_id: myId,
-        receiver_id: partnerId,
-        content: text,
-      });
-      if (error) {
-        console.error("[Chat] sendText Supabase error:", error);
-        return { error: new Error(error.message) };
+      if (kind === "gift") {
+        await supabase.from("chat_messages").insert({
+          sender_id: myId,
+          receiver_id: partnerId,
+          content: text,
+          message_kind: "gift",
+        });
+      } else if (kind === "audio") {
+        await supabase.from("chat_messages").insert({
+          sender_id: myId,
+          receiver_id: partnerId,
+          content: text,
+          message_kind: "audio",
+        });
+      } else {
+        await supabase.from("chat_messages").insert({
+          sender_id: myId,
+          receiver_id: partnerId,
+          content: text,
+          message_kind: "text",
+        });
       }
-      // Notify the recipient via OneSignal — "Nova mensagem!"
       notifyPartner(partnerId, "Nova mensagem!", text);
-      return { error: null };
     } catch (err) {
-      console.error("[Chat] sendText exception:", err);
-      return { error: err instanceof Error ? err : new Error("Unknown error") };
+      console.error("[Chat] sendMessage error:", err);
     }
   }
 
-  async function sendMedia(mediaUrl: string, mediaType: string): Promise<{ error: Error | null }> {
-    if (!myId) return { error: new Error("Not logged in") };
-    const { error } = await supabase.from("chat_messages").insert({
-      sender_id: myId,
-      receiver_id: partnerId,
-      content: mediaType.startsWith("video") ? "🎥 Vídeo" : "📷 Foto",
-      media_url: mediaUrl,
-      message_kind: "text",
-      is_locked: false,
-      unlock_price: 0,
-    });
-    if (error) return { error: new Error(error.message) };
-    notifyPartner(partnerId, "📷 Mídia recebida", `Nova foto/vídeo de ${myId}`);
-    return { error: null };
-  }
-
-  async function sendAudio(seconds: number): Promise<{ error: Error | null }> {
-    if (!myId) return { error: new Error("Not logged in") };
+  async function sendAudioMessage(mediaUrl: string, seconds: number): Promise<void> {
+    if (!myId) return;
     try {
       const { error } = await supabase.from("chat_messages").insert({
         sender_id: myId,
         receiver_id: partnerId,
+        media_url: mediaUrl,
         audio_seconds: seconds,
         message_kind: "audio",
+        content: `Áudio (${seconds}s)`,
       });
-      if (error) {
-        console.error("[Chat] sendAudio Supabase error:", error);
-        return { error: new Error(error.message) };
-      }
+      if (error) console.error("[Chat] sendAudioMessage Supabase error:", error);
       notifyPartner(partnerId, "🎤 Áudio recebido", "Novo áudio para você");
-      return { error: null };
     } catch (err) {
-      console.error("[Chat] sendAudio exception:", err);
-      return { error: err instanceof Error ? err : new Error("Unknown error") };
+      console.error("[Chat] sendAudioMessage exception:", err);
     }
   }
 
-  async function sendLockedMedia(mediaUrl: string, price: number): Promise<void> {
-    if (!myId) return;
-    await supabase.from("chat_messages").insert({
-      sender_id: myId,
-      receiver_id: partnerId,
-      message_kind: "locked",
-      media_url: mediaUrl,
-      unlock_price: price,
-      is_locked: true,
-      content: "Mídia privada 🔒",
-    });
-    notifyPartner(partnerId, "🔒 Mídia exclusiva", `Desbloqueie por ${price} moedas`);
-  }
-
-  async function sendGift(emoji: string, name: string, price: number): Promise<void> {
+  async function sendGiftMessage(emoji: string, name: string, price: number): Promise<void> {
     if (!myId) return;
     await supabase.from("chat_messages").insert({
       sender_id: myId,
@@ -186,7 +169,7 @@ export function useChat(partnerId: string) {
     notifyPartner(partnerId, `${emoji} Mimo recebido`, `Você ganhou: ${name}`);
   }
 
-  return { messages, loading, sendText, sendMedia, sendAudio, sendGift, sendLockedMedia, myId };
+  return { messages, loading, sendMessage, sendAudioMessage, sendGiftMessage, myId, partnerName, isDemo };
 }
 
 /** Best-effort: look up partner's OneSignal player ID and call notify-user edge function */
