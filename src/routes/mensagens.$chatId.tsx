@@ -434,7 +434,6 @@ function MessageBubble({ msg }: { msg: LocalMessage }) {
   const isMe = msg.from === "me";
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playing, setPlaying] = useState(false);
-  const [progress, setProgress] = useState(0);
 
   const togglePlay = () => {
     const el = audioRef.current;
@@ -451,21 +450,9 @@ function MessageBubble({ msg }: { msg: LocalMessage }) {
   useEffect(() => {
     const el = audioRef.current;
     if (!el) return;
-    const onTimeUpdate = () => {
-      if (el.duration > 0) {
-        setProgress((el.currentTime / el.duration) * 100);
-      }
-    };
-    const onEnded = () => {
-      setPlaying(false);
-      setProgress(0);
-    };
-    el.addEventListener("timeupdate", onTimeUpdate);
+    const onEnded = () => setPlaying(false);
     el.addEventListener("ended", onEnded);
-    return () => {
-      el.removeEventListener("timeupdate", onTimeUpdate);
-      el.removeEventListener("ended", onEnded);
-    };
+    return () => el.removeEventListener("ended", onEnded);
   }, []);
 
   return (
@@ -493,10 +480,7 @@ function MessageBubble({ msg }: { msg: LocalMessage }) {
                 <span>{msg.seconds ? `${msg.seconds}s` : ""}</span>
               </div>
               <div className={`h-1.5 rounded-full w-full ${isMe ? "bg-black/20" : "bg-white/20"}`}>
-                <div
-                  className={`h-full rounded-full transition-[width] duration-150 ease-linear ${isMe ? "bg-black" : "bg-[#FFD700]"}`}
-                  style={{ width: `${progress}%` }}
-                />
+                <div className={`h-full rounded-full w-2/3 ${isMe ? "bg-black" : "bg-[#FFD700]"}`} />
               </div>
             </div>
             <audio ref={audioRef} src={msg.media} preload="none" />
