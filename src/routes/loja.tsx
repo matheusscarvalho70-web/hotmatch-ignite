@@ -86,8 +86,29 @@ function Store() {
 }
 
 function BuyerView({ isCreator }: { isCreator: boolean }) {
-  const { coins, vip } = useAppState();
-  const [checkout, setCheckout] = useState<(typeof coinPacks)[number] | null>(null);
+  const { coins, vip, profileId } = useAppState();
+  const [loading, setLoading] = useState<null | "coins" | "vip">(null);
+
+  async function startPayment(itemType: "coins" | "vip", packId?: string) {
+    if (!profileId) {
+      toast.error("Faça login antes de comprar.");
+      return;
+    }
+    setLoading(itemType === "coins" ? "coins" : "vip");
+    try {
+      const { data, error } = await supabase.functions.invoke("create-payment", {
+        body: { profile_id: profileId, item_type: itemType, pack_id: packId ?? null },
+      });
+      if (error || !data?.init_point) throw new Error(error?.message ?? "Sem URL de pagamento");
+      window.location.href = data.init_point;
+    } catch (err) {
+      toast.error("Erro ao iniciar pagamento", {
+        description: err instanceof Error ? err.message : "Tente novamente.",
+      });
+    } finally {
+      setLoading(null);
+    }
+  }
 
   return (
     <>
@@ -117,8 +138,9 @@ function BuyerView({ isCreator }: { isCreator: boolean }) {
         {coinPacks.map((p) => (
           <button
             key={p.id}
-            onClick={() => setCheckout(p)}
-            className="tap-scale relative overflow-hidden rounded-3xl border border-border bg-surface p-4 text-left"
+            onClick={() => startPayment("coins", p.id)}
+            disabled={loading !== null}
+            className="tap-scale relative overflow-hidden rounded-3xl border border-border bg-surface p-4 text-left disabled:opacity-50"
           >
             {p.tag && (
               <span className="absolute right-0 top-0 rounded-bl-xl bg-gradient-hot px-2 py-1 text-[9px] font-bold text-primary-foreground">
@@ -159,70 +181,13 @@ function BuyerView({ isCreator }: { isCreator: boolean }) {
             ))}
           </ul>
           <button
-            onClick={() => {
-              actions.activateVip();
-              toast("Bem-vindo ao VIP Gold 👑");
-            }}
-            disabled={vip}
+            onClick={() => startPayment("vip")}
+            disabled={vip || loading !== null}
             className="tap-scale mt-4 w-full rounded-full bg-gradient-gold py-3.5 text-sm font-extrabold text-gold-foreground shadow-gold disabled:opacity-60"
           >
-            {vip ? "VIP Gold ativo" : "Assinar por R$ 39,90/mês"}
+            {vip ? "VIP Gold ativo" : loading === "vip" ? "Abrindo Mercado Pago…" : "Assinar por R$ 39,90/mês"}
           </button>
         </section>
-      )}
-
-      {checkout && (
-        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/70 backdrop-blur-sm">
-          <div className="glass-panel w-full max-w-[30rem] rounded-t-[2rem] p-5 pb-[calc(env(safe-area-inset-bottom)+1.5rem)]">
-            <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-border" />
-            <h2 className="text-lg font-extrabold">Pagamento via Pix</h2>
-            <div className="mt-4 flex items-center justify-between rounded-2xl border border-border bg-surface-2 p-4">
-              <div>
-                <p className="text-sm font-bold">
-                  {checkout.coins + checkout.bonus} moedas
-                  {checkout.bonus > 0 && (
-                    <span className="ml-1 text-xs font-semibold text-gold">
-                      (+{checkout.bonus} bônus)
-                    </span>
-                  )}
-                </p>
-                <p className="text-xs text-muted-foreground">Crédito imediato após o pagamento</p>
-              </div>
-              <p className="text-lg font-extrabold text-gold">{formatBRL(checkout.price)}</p>
-            </div>
-            <div className="mt-4 grid place-items-center rounded-2xl border border-border bg-background p-6">
-              <div className="grid size-32 grid-cols-8 gap-0.5 rounded-lg bg-foreground p-2">
-                {Array.from({ length: 64 }).map((_, i) => (
-                  <span
-                    key={i}
-                    className={(i * 7) % 3 === 0 ? "bg-background" : "bg-transparent"}
-                  />
-                ))}
-              </div>
-              <p className="mt-3 text-xs text-muted-foreground">Escaneie o QR Code Pix</p>
-            </div>
-            <div className="mt-4 flex gap-3">
-              <button
-                onClick={() => setCheckout(null)}
-                className="tap-scale flex-1 rounded-full border border-border bg-surface-2 py-3 text-sm font-semibold"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={() => {
-                  setCheckout(null);
-                  toast("Aguardando confirmação Pix ⏳", {
-                    description: "As moedas serão creditadas automaticamente após a confirmação do pagamento.",
-                  });
-                }}
-                className="tap-scale flex-[1.4] rounded-full bg-gradient-hot py-3 text-sm font-bold text-primary-foreground shadow-hot opacity-50 cursor-not-allowed"
-                disabled
-              >
-                Aguardando Pix…
-              </button>
-            </div>
-          </div>
-        </div>
       )}
     </>
   );

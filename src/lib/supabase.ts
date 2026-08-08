@@ -25,6 +25,8 @@ export type DbProfile = {
   public_photos: string[] | null;
   vip_photos: string[] | null;
   gallery_price: number;
+  is_vip: boolean;
+  vip_expires_at: string | null;
   created_at: string;
 };
 
@@ -115,6 +117,10 @@ export type DbTransaction = {
   amount: number;
   /** Coin delta — positive for credits, negative for debits. */
   coins_amount: number;
-  type: "purchase" | "gift_sent" | "gift_received" | "unlock" | "withdrawal" | string;
+  type: "purchase" | "gift_sent" | "gift_received" | "unlock" | "withdrawal" | "vip_subscription" | string;
+  status: "pending" | "approved" | "cancelled" | "failed";
+  provider: string | null;
+  provider_payment_id: string | null;
+  metadata: Record<string, unknown> | null;
   created_at: string;
 };
