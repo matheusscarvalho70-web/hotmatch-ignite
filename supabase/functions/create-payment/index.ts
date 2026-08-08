@@ -136,7 +136,7 @@ Deno.serve(async (req: Request) => {
       // Mark transaction as failed
       await supabase
         .from("transactions")
-        .update({ status: "failed", metadata: { ...tx.metadata, mp_error: mpData } })
+        .update({ status: "failed", metadata: { ...(tx.metadata ?? {}), mp_error: mpData } })
         .eq("id", tx.id);
 
       return new Response(
@@ -150,7 +150,7 @@ Deno.serve(async (req: Request) => {
       .from("transactions")
       .update({
         provider_payment_id: mpData.id,
-        metadata: { ...tx.metadata, preference_id: mpData.id },
+        metadata: { ...(tx.metadata ?? {}), preference_id: mpData.id },
       })
       .eq("id", tx.id);
 
