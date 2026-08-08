@@ -107,16 +107,13 @@ function Chat() {
   const [showMenu, setShowMenu] = useState(false);
   const [showReport, setShowReport] = useState(false);
 
-  // Audio recording state
   const [isRecording, setIsRecording] = useState(false);
   const [audioTimer, setAudioTimer] = useState(0);
   const audioIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
 
-  // Call state
   const [callState, setCallState] = useState<"idle" | "voice" | "video">("idle");
-
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -159,7 +156,6 @@ function Chat() {
     toast.success(`Você enviou ${gift.name}!`);
   };
 
-  // ── Audio recording ────────────────────────────────────────────────────────
   const startAudioRecord = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -177,11 +173,11 @@ function Chat() {
           try {
             const fileName = `audio_${Date.now()}.webm`;
             const { error: uploadError } = await supabase.storage
-              .from("chat-media") // <--- Alterado para chat-media
+              .from("chat-media")
               .upload(`chat-audio/${fileName}`, blob, { contentType: "audio/webm" });
             if (uploadError) throw uploadError;
             const { data: urlData } = supabase.storage
-              .from("chat-media") // <--- Alterado para chat-media
+              .from("chat-media")
               .getPublicUrl(`chat-audio/${fileName}`);
             await sendAudioMessage(urlData.publicUrl, seconds);
             toast.success("Áudio enviado!", { id: "audio-upload" });
@@ -213,10 +209,9 @@ function Chat() {
     setAudioTimer(0);
   };
 
-  // ── Block / Report ──────────────────────────────────────────────────────────
   const handleBlock = () => {
     setShowMenu(false);
-    toast.success(`${partnerName} foi bloqueado. Você não receberá mais mensagens desta pessoa.`);
+    toast.success(`${partnerName} foi bloqueado.`);
   };
 
   const handleReportSubmit = async (subject: string, description: string) => {
@@ -232,15 +227,14 @@ function Chat() {
         description: description.trim() || null,
       });
       if (error) throw error;
-      toast.success("Denúncia enviada. Nossa equipe irá analisar.");
+      toast.success("Denúncia enviada.");
       setShowReport(false);
     } catch (err) {
-      toast.error("Erro ao enviar denúncia. Tente novamente.");
+      toast.error("Erro ao enviar denúncia.");
       console.error(err);
     }
   };
 
-  // ── Call handlers ───────────────────────────────────────────────────────────
   const startCall = async (type: "voice" | "video") => {
     try {
       const constraints = type === "video" ? { audio: true, video: true } : { audio: true };
@@ -269,7 +263,6 @@ function Chat() {
 
   return (
     <div className="flex flex-col h-[100dvh] bg-[#0B0B0E] text-white">
-      {/* HEADER */}
       <div className="flex items-center justify-between px-4 py-3 bg-[#121218]/80 backdrop-blur-md border-b border-white/10 sticky top-0 z-20">
         <div className="flex items-center gap-3">
           <Link to="/mensagens" className="text-white/70 hover:text-white">
@@ -292,25 +285,14 @@ function Chat() {
         </div>
 
         <div className="flex items-center gap-3 text-white/80">
-          <button
-            onClick={() => startCall("voice")}
-            className="p-2 hover:bg-white/5 rounded-full transition"
-            title="Chamada de voz"
-          >
+          <button onClick={() => startCall("voice")} className="p-2 hover:bg-white/5 rounded-full transition">
             <Phone className="w-5 h-5 text-[#FFD700]" />
           </button>
-          <button
-            onClick={() => startCall("video")}
-            className="p-2 hover:bg-white/5 rounded-full transition"
-            title="Chamada de vídeo"
-          >
+          <button onClick={() => startCall("video")} className="p-2 hover:bg-white/5 rounded-full transition">
             <Video className="w-5 h-5 text-[#FFD700]" />
           </button>
           <div className="relative">
-            <button
-              onClick={() => setShowMenu((v) => !v)}
-              className="p-2 hover:bg-white/5 rounded-full transition"
-            >
+            <button onClick={() => setShowMenu((v) => !v)} className="p-2 hover:bg-white/5 rounded-full transition">
               <MoreVertical className="w-5 h-5" />
             </button>
             {showMenu && (
@@ -321,8 +303,7 @@ function Chat() {
                     onClick={handleBlock}
                     className="flex w-full items-center gap-3 px-4 py-3 text-sm font-medium text-white hover:bg-white/5 transition"
                   >
-                    <Ban className="w-4 h-4 text-red-400" />
-                    Bloquear
+                    <Ban className="w-4 h-4 text-red-400" /> Bloquear
                   </button>
                   <button
                     onClick={() => {
@@ -331,8 +312,7 @@ function Chat() {
                     }}
                     className="flex w-full items-center gap-3 px-4 py-3 text-sm font-medium text-white hover:bg-white/5 transition border-t border-white/5"
                   >
-                    <Flag className="w-4 h-4 text-orange-400" />
-                    Denunciar
+                    <Flag className="w-4 h-4 text-orange-400" /> Denunciar
                   </button>
                 </div>
               </>
@@ -341,21 +321,18 @@ function Chat() {
         </div>
       </div>
 
-      {/* MENSAGENS */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         <div className="text-center my-2">
           <span className="text-[10px] bg-white/5 text-white/50 px-3 py-1 rounded-full uppercase tracking-wider border border-white/5">
             Conexão segura HotMatch
           </span>
         </div>
-
         {messages.map((msg) => (
           <MessageBubble key={msg.id} msg={msg} />
         ))}
         <div ref={messagesEndRef} />
       </div>
 
-      {/* INPUT BAR */}
       <div className="p-3 bg-[#121218] border-t border-white/10 sticky bottom-0 z-20">
         {isRecording ? (
           <div className="flex items-center justify-between bg-[#1C1C24] px-4 py-3 rounded-full border border-red-500/50">
@@ -374,16 +351,10 @@ function Chat() {
           </div>
         ) : (
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowGiftModal(true)}
-              className="p-2.5 text-[#FFD700] hover:bg-white/5 rounded-full transition"
-            >
+            <button onClick={() => setShowGiftModal(true)} className="p-2.5 text-[#FFD700] hover:bg-white/5 rounded-full transition">
               <Gift className="w-5 h-5" />
             </button>
-            <button
-              onClick={startAudioRecord}
-              className="p-2.5 text-white/70 hover:text-white hover:bg-white/5 rounded-full transition"
-            >
+            <button onClick={startAudioRecord} className="p-2.5 text-white/70 hover:text-white hover:bg-white/5 rounded-full transition">
               <Mic className="w-5 h-5" />
             </button>
             <input
@@ -404,16 +375,9 @@ function Chat() {
         )}
       </div>
 
-      {/* MODAL DE PRESENTES */}
       {showGiftModal && (
-        <div
-          className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end justify-center"
-          onClick={() => setShowGiftModal(false)}
-        >
-          <div
-            className="bg-[#121218] w-full max-w-lg rounded-t-3xl p-6 border-t border-white/10 space-y-4 animate-in fade-in slide-in-from-bottom duration-200"
-            onClick={(e) => e.stopPropagation()}
-          >
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end justify-center" onClick={() => setShowGiftModal(false)}>
+          <div className="bg-[#121218] w-full max-w-lg rounded-t-3xl p-6 border-t border-white/10 space-y-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-bold flex items-center gap-2 text-[#FFD700]">
                 <Gift className="w-5 h-5" /> Enviar Presente
@@ -429,14 +393,7 @@ function Chat() {
                   onClick={() => handleSendGift(g)}
                   className="group relative bg-[#1C1C24] hover:border-[#FFD700] border border-white/5 p-4 rounded-2xl flex flex-col items-center gap-2 transition hover:scale-105"
                 >
-                  <span
-                    className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-20 transition-opacity"
-                    style={{ background: `radial-gradient(circle at center, ${g.color}, transparent 70%)` }}
-                  />
-                  <span
-                    className="grid size-14 place-items-center rounded-full text-3xl transition-transform group-hover:scale-110"
-                    style={{ backgroundColor: `${g.color}22`, boxShadow: `0 4px 20px ${g.color}33` }}
-                  >
+                  <span className="grid size-14 place-items-center rounded-full text-3xl" style={{ backgroundColor: `${g.color}22` }}>
                     {g.emoji}
                   </span>
                   <span className="text-xs font-semibold text-white">{g.name}</span>
@@ -446,14 +403,10 @@ function Chat() {
                 </button>
               ))}
             </div>
-            <p className="text-center text-[11px] text-white/40">
-              Seu saldo: {coins} moedas
-            </p>
           </div>
         </div>
       )}
 
-      {/* PAYWALL DE CHAT */}
       {showPaywall && (
         <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
           <div className="bg-[#121218] border border-white/10 w-full max-w-sm rounded-3xl p-6 text-center space-y-5 shadow-2xl">
@@ -463,20 +416,17 @@ function Chat() {
             <div className="space-y-2">
               <h3 className="text-xl font-bold text-white">Desbloquear Chat Ilimitado</h3>
               <p className="text-xs text-white/60 leading-relaxed">
-                Para conversar livremente e trocar mensagens com {partnerName}, desbloqueie o acesso VIP completo.
+                Para conversar livremente com {partnerName}, desbloqueie o VIP.
               </p>
             </div>
             <div className="space-y-2">
               <button
                 onClick={handleUnlockAndSend}
-                className="w-full py-3 bg-gradient-to-r from-[#FFD700] to-[#FFA500] text-black font-bold rounded-full text-sm shadow-lg shadow-[#FFD700]/20 hover:opacity-90 transition"
+                className="w-full py-3 bg-gradient-to-r from-[#FFD700] to-[#FFA500] text-black font-bold rounded-full text-sm"
               >
-                Desbloquear Agora (Acesso VIP)
+                Desbloquear Agora
               </button>
-              <button
-                onClick={() => setShowPaywall(false)}
-                className="w-full py-2.5 text-white/50 hover:text-white text-xs font-medium transition"
-              >
+              <button onClick={() => setShowPaywall(false)} className="w-full py-2.5 text-white/50 text-xs font-medium">
                 Agora não
               </button>
             </div>
@@ -484,23 +434,12 @@ function Chat() {
         </div>
       )}
 
-      {/* MODAL DE DENÚNCIA */}
       {showReport && (
-        <ReportModal
-          partnerName={partnerName}
-          onClose={() => setShowReport(false)}
-          onSubmit={handleReportSubmit}
-        />
+        <ReportModal partnerName={partnerName} onClose={() => setShowReport(false)} onSubmit={handleReportSubmit} />
       )}
 
-      {/* CALL OVERLAY */}
       {callState !== "idle" && (
-        <CallOverlay
-          type={callState}
-          partnerName={partnerName}
-          partnerAvatar={partnerAvatar}
-          onEnd={endCall}
-        />
+        <CallOverlay type={callState} partnerName={partnerName} partnerAvatar={partnerAvatar} onEnd={endCall} />
       )}
     </div>
   );
@@ -540,4 +479,51 @@ function MessageBubble({ msg }: { msg: LocalMessage }) {
             : "bg-[#1C1C24] text-white border border-white/5"
         }`}
       >
-        
+        {msg.kind === "audio" && msg.media ? (
+          <div className="flex items-center gap-3 min-w-[160px]">
+            <button
+              onClick={togglePlay}
+              className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${
+                isMe ? "bg-black text-[#FFD700]" : "bg-[#FFD700] text-black"
+              }`}
+            >
+              {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
+            </button>
+            <div className="flex flex-col flex-1">
+              <div className="flex items-center justify-between text-[10px] opacity-70 mb-1">
+                <span>Áudio</span>
+                <span>{msg.seconds ? `${msg.seconds}s` : ""}</span>
+              </div>
+              <div className={`h-1.5 rounded-full w-full ${isMe ? "bg-black/20" : "bg-white/20"}`}>
+                <div className={`h-full rounded-full w-2/3 ${isMe ? "bg-black" : "bg-[#FFD700]"}`} />
+              </div>
+            </div>
+            <audio ref={audioRef} src={msg.media} preload="none" />
+          </div>
+        ) : msg.kind === "gift" ? (
+          <div className="space-y-1 text-center py-1">
+            <div className="text-3xl">{msg.text?.split(" ")[0]}</div>
+            <div className="font-bold text-xs">{msg.text}</div>
+            <div className="text-[10px] opacity-70">Presente enviado</div>
+          </div>
+        ) : (
+          <p className="break-words leading-relaxed">{msg.text}</p>
+        )}
+        <div className={`text-[9px] mt-1 text-right ${isMe ? "text-black/60" : "text-white/40"}`}>
+          {msg.time}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ReportModal({
+  partnerName,
+  onClose,
+  onSubmit,
+}: {
+  partnerName: string;
+  onClose: () => void;
+  onSubmit: (subject: string, description: string) => void;
+}) {
+  const [subject, setSubject] 
