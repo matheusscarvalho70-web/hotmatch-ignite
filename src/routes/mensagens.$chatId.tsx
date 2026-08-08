@@ -177,11 +177,11 @@ function Chat() {
           try {
             const fileName = `audio_${Date.now()}.webm`;
             const { error: uploadError } = await supabase.storage
-              .from("photos")
+              .from("chat-media") // <--- Alterado para chat-media
               .upload(`chat-audio/${fileName}`, blob, { contentType: "audio/webm" });
             if (uploadError) throw uploadError;
             const { data: urlData } = supabase.storage
-              .from("photos")
+              .from("chat-media") // <--- Alterado para chat-media
               .getPublicUrl(`chat-audio/${fileName}`);
             await sendAudioMessage(urlData.publicUrl, seconds);
             toast.success("Áudio enviado!", { id: "audio-upload" });
@@ -245,7 +245,6 @@ function Chat() {
     try {
       const constraints = type === "video" ? { audio: true, video: true } : { audio: true };
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      // Store stream for cleanup
       (startCall as any)._stream = stream;
       setCallState(type);
     } catch {
@@ -260,7 +259,6 @@ function Chat() {
     setCallState("idle");
   };
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (audioIntervalRef.current) clearInterval(audioIntervalRef.current);
@@ -431,7 +429,6 @@ function Chat() {
                   onClick={() => handleSendGift(g)}
                   className="group relative bg-[#1C1C24] hover:border-[#FFD700] border border-white/5 p-4 rounded-2xl flex flex-col items-center gap-2 transition hover:scale-105"
                 >
-                  {/* Gradient glow ring on hover */}
                   <span
                     className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-20 transition-opacity"
                     style={{ background: `radial-gradient(circle at center, ${g.color}, transparent 70%)` }}
@@ -509,7 +506,6 @@ function Chat() {
   );
 }
 
-/* ── Message bubble with audio player ─────────────────────────────────────────── */
 function MessageBubble({ msg }: { msg: LocalMessage }) {
   const isMe = msg.from === "me";
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -540,207 +536,8 @@ function MessageBubble({ msg }: { msg: LocalMessage }) {
       <div
         className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-sm ${
           isMe
-            ? "bg-gradient-to-r from-[#FFD700] to-[#FFA500] text-black font-medium rounded-br-none shadow-lg shadow-[#FFD700]/10"
-            : "bg-[#1C1C24] text-white rounded-bl-none border border-white/5"
+            ? "bg-gradient-to-r from-[#FFD700] to-[#FFA500] text-black font-medium"
+            : "bg-[#1C1C24] text-white border border-white/5"
         }`}
       >
-        {msg.kind === "audio" ? (
-          <div className="flex items-center gap-3 py-1 min-w-[180px]">
-            <button
-              onClick={togglePlay}
-              className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${
-                isMe ? "bg-black/20 text-black" : "bg-[#FFD700] text-black"
-              }`}
-            >
-              {playing ? <Pause className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current" />}
-            </button>
-            <div className="flex-1 space-y-1">
-              <div className="flex items-center gap-1.5">
-                <Volume2 className={`w-3 h-3 ${isMe ? "text-black/60" : "text-white/40"}`} />
-                <span className={`text-[10px] ${isMe ? "text-black/60" : "text-white/50"}`}>
-                  {msg.seconds ? `${Math.floor(msg.seconds / 60)}:${msg.seconds % 60 < 10 ? `0${msg.seconds % 60}` : msg.seconds % 60}` : "0:00"}
-                </span>
-              </div>
-              <div className={`h-1.5 w-full rounded-full ${isMe ? "bg-black/30" : "bg-white/20"}`}>
-                <div className={`h-full rounded-full ${isMe ? "bg-black/50" : "bg-[#FFD700]"} ${playing ? "w-2/3" : "w-1/3"} transition-all`} />
-              </div>
-            </div>
-            {msg.media && <audio ref={audioRef} src={msg.media} preload="metadata" />}
-          </div>
-        ) : (
-          <p className="leading-relaxed">{msg.text}</p>
-        )}
-        <span className={`block text-[9px] mt-1 text-right ${isMe ? "text-black/60" : "text-white/40"}`}>
-          {msg.time}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-/* ── Report modal ─────────────────────────────────────────────────────────────── */
-function ReportModal({
-  partnerName,
-  onClose,
-  onSubmit,
-}: {
-  partnerName: string;
-  onClose: () => void;
-  onSubmit: (subject: string, description: string) => void;
-}) {
-  const [subject, setSubject] = useState("");
-  const [description, setDescription] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-
-  const handleSubmit = () => {
-    if (!subject.trim()) return;
-    setSubmitting(true);
-    onSubmit(subject, description);
-    setSubmitting(false);
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
-      <div className="bg-[#121218] border border-white/10 w-full max-w-md rounded-3xl p-6 space-y-5 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="grid size-10 place-items-center rounded-full bg-orange-500/15 border border-orange-500/30">
-              <Flag className="w-5 h-5 text-orange-400" />
-            </span>
-            <div>
-              <h3 className="text-lg font-bold text-white">Denunciar {partnerName}</h3>
-              <p className="text-[11px] text-white/50">Sua denúncia será analisada pela nossa equipe</p>
-            </div>
-          </div>
-          <button onClick={onClose} className="text-white/50 hover:text-white p-1">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <div className="space-y-3">
-          <div>
-            <label className="block text-xs font-semibold text-white/70 mb-1.5">Assunto</label>
-            <input
-              type="text"
-              value={subject}
-              onChange={(e) => setSubject(e.target.value)}
-              placeholder="Ex: Comportamento inadequado"
-              className="w-full bg-[#1C1C24] text-white text-sm px-4 py-3 rounded-xl border border-white/10 focus:outline-none focus:border-orange-400 placeholder:text-white/30"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-white/70 mb-1.5">Descrição</label>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Descreva o que aconteceu..."
-              rows={4}
-              className="w-full bg-[#1C1C24] text-white text-sm px-4 py-3 rounded-xl border border-white/10 focus:outline-none focus:border-orange-400 placeholder:text-white/30 resize-none"
-            />
-          </div>
-        </div>
-
-        <div className="flex gap-3">
-          <button
-            onClick={onClose}
-            className="flex-1 py-3 rounded-full border border-white/10 text-sm font-semibold text-white/60 hover:text-white hover:bg-white/5 transition"
-          >
-            Cancelar
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={submitting || !subject.trim()}
-            className="flex-1 py-3 rounded-full bg-gradient-to-r from-orange-500 to-red-500 text-white text-sm font-bold disabled:opacity-50 transition"
-          >
-            Enviar denúncia
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ── Call overlay (WebRTC-prepared UI) ────────────────────────────────────────── */
-function CallOverlay({
-  type,
-  partnerName,
-  partnerAvatar,
-  onEnd,
-}: {
-  type: "voice" | "video";
-  partnerName: string;
-  partnerAvatar: string | null;
-  onEnd: () => void;
-}) {
-  const [duration, setDuration] = useState(0);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-
-  useEffect(() => {
-    const stream = (startCall as any)._stream as MediaStream | undefined;
-    if (type === "video" && videoRef.current && stream) {
-      videoRef.current.srcObject = stream;
-    }
-    const interval = setInterval(() => setDuration((d) => d + 1), 1000);
-    return () => clearInterval(interval);
-  }, [type]);
-
-  const fmtTime = (s: number) => `${Math.floor(s / 60)}:${s % 60 < 10 ? `0${s % 60}` : s % 60}`;
-
-  return (
-    <div className="fixed inset-0 z-[60] bg-gradient-to-b from-[#1a1a2e] to-[#0B0B0E] flex flex-col items-center justify-between p-6 animate-in fade-in duration-200">
-      {/* Top: partner info */}
-      <div className="flex flex-col items-center gap-3 pt-8">
-        <div className="relative">
-          {type === "video" ? (
-            <video
-              ref={videoRef}
-              autoPlay
-              muted
-              playsInline
-              className="w-40 h-40 rounded-full object-cover border-2 border-[#FFD700]/40"
-            />
-          ) : (
-            <img
-              src={partnerAvatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400"}
-              alt={partnerName}
-              className="w-40 h-40 rounded-full object-cover border-2 border-[#FFD700]/40"
-            />
-          )}
-          <div className="absolute bottom-2 right-2 w-5 h-5 bg-green-500 rounded-full border-2 border-[#0B0B0E] flex items-center justify-center">
-            <span className="w-2 h-2 bg-green-300 rounded-full animate-pulse" />
-          </div>
-        </div>
-        <h2 className="text-xl font-bold text-white">{partnerName}</h2>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-green-400 font-medium">
-            {type === "video" ? "Vídeo" : "Voz"} · {fmtTime(duration)}
-          </span>
-        </div>
-      </div>
-
-      {/* Center: status */}
-      <div className="flex flex-col items-center gap-2">
-        <div className="flex items-center gap-2 text-white/40 text-sm">
-          {type === "video" ? <Video className="w-4 h-4" /> : <Phone className="w-4 h-4" />}
-          <span>Chamada em andamento via WebRTC</span>
-        </div>
-      </div>
-
-      {/* Bottom: controls */}
-      <div className="flex items-center gap-6 pb-8">
-        <button className="grid size-14 place-items-center rounded-full bg-white/10 text-white hover:bg-white/20 transition">
-          {type === "video" ? <VideoOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
-        </button>
-        <button
-          onClick={onEnd}
-          className="grid size-16 place-items-center rounded-full bg-red-500 text-white hover:bg-red-600 transition shadow-lg shadow-red-500/30"
-        >
-          <PhoneOff className="w-7 h-7" />
-        </button>
-        <button className="grid size-14 place-items-center rounded-full bg-white/10 text-white hover:bg-white/20 transition">
-          <Volume2 className="w-6 h-6" />
-        </button>
-      </div>
-    </div>
-  );
-}
+        
