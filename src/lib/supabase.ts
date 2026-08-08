@@ -57,7 +57,7 @@ export type DbChatMessage = {
   media_url: string | null;
   is_locked: boolean;
   unlock_price: number;
-  message_kind: "text" | "audio" | "locked" | "gift";
+  message_kind: "text" | "audio" | "locked" | "gift" | "media";
   audio_seconds: number | null;
   created_at: string;
 };

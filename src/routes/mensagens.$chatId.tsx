@@ -6,14 +6,13 @@ import {
   Coins,
   Flag,
   Gift,
+  ImagePlus,
   Mic,
   MoreVertical,
-  Phone,
   PhoneOff,
   Play,
   Pause,
   Send,
-  Video,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -95,7 +94,7 @@ function Chat() {
     };
   }, [myId, partnerId, dbPartner]);
 
-  const { messages, sendMessage, sendAudioMessage, sendGiftMessage } = useChat({
+  const { messages, sendMessage, sendAudioMessage, sendGiftMessage, sendMediaMessage } = useChat({
     partnerId,
     partnerName,
     isDemo: dbPartner?.is_demo,
@@ -114,6 +113,7 @@ function Chat() {
   const audioSecondsRef = useRef(0);
 
   const [callState, setCallState] = useState<"idle" | "voice" | "video">("idle");
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const callStreamRef = useRef<MediaStream | null>(null);
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -141,6 +141,37 @@ function Chat() {
     sendGiftMessage(gift.emoji, gift.name, gift.price);
     actions.spendCoins(gift.price);
     toast.success(`Você enviou ${gift.name}!`);
+  };
+
+  const handleMediaSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const isVideo = file.type.startsWith("video/");
+    const isImage = file.type.startsWith("image/");
+    if (!isVideo && !isImage) {
+      toast.error("Selecione uma imagem ou vídeo.");
+      return;
+    }
+    toast.loading("Enviando mídia...", { id: "media-upload" });
+    try {
+      const ext = file.name.split(".").pop() || (isVideo ? "mp4" : "jpg");
+      const fileName = `media_${Date.now()}.${ext}`;
+      const folder = isVideo ? "chat-video" : "chat-photo";
+      const { error: uploadError } = await supabase.storage
+        .from("chat-media")
+        .upload(`${folder}/${fileName}`, file, { contentType: file.type });
+      if (uploadError) throw uploadError;
+      const { data: urlData } = supabase.storage
+        .from("chat-media")
+        .getPublicUrl(`${folder}/${fileName}`);
+      await sendMediaMessage(urlData.publicUrl, isVideo ? "vídeo" : "foto");
+      toast.success("Mídia enviada!", { id: "media-upload" });
+    } catch (err) {
+      toast.error("Erro ao enviar mídia.", { id: "media-upload" });
+      console.error(err);
+    } finally {
+      e.target.value = "";
+    }
   };
 
   const startAudioRecord = async () => {
@@ -291,11 +322,8 @@ function Chat() {
         </div>
 
         <div className="flex items-center gap-3 text-white/80">
-          <button onClick={() => startCall("voice")} className="p-2 hover:bg-white/5 rounded-full transition">
-            <Phone className="w-5 h-5 text-[#FFD700]" />
-          </button>
-          <button onClick={() => startCall("video")} className="p-2 hover:bg-white/5 rounded-full transition">
-            <Video className="w-5 h-5 text-[#FFD700]" />
+          <button onClick={() => setShowGiftModal(true)} className="p-2 hover:bg-white/5 rounded-full transition">
+            <Gift className="w-5 h-5 text-[#FFD700]" />
           </button>
           <div className="relative">
             <button onClick={() => setShowMenu((v) => !v)} className="p-2 hover:bg-white/5 rounded-full transition">
@@ -357,9 +385,16 @@ function Chat() {
           </div>
         ) : (
           <div className="flex items-center gap-2">
-            <button onClick={() => setShowGiftModal(true)} className="p-2.5 text-[#FFD700] hover:bg-white/5 rounded-full transition">
-              <Gift className="w-5 h-5" />
+            <button onClick={() => fileInputRef.current?.click()} className="p-2.5 text-[#FFD700] hover:bg-white/5 rounded-full transition">
+              <ImagePlus className="w-5 h-5" />
             </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*,video/*"
+              onChange={handleMediaSelect}
+              className="hidden"
+            />
             <button onClick={startAudioRecord} className="p-2.5 text-white/70 hover:text-white hover:bg-white/5 rounded-full transition">
               <Mic className="w-5 h-5" />
             </button>
@@ -506,6 +541,14 @@ function MessageBubble({ msg }: { msg: LocalMessage }) {
             <div className="text-3xl">{msg.text?.split(" ")[0]}</div>
             <div className="font-bold text-xs">{msg.text}</div>
             <div className="text-[10px] opacity-70">Presente enviado</div>
+          </div>
+        ) : msg.kind === "media" && msg.media ? (
+          <div className="space-y-1">
+            {msg.media.match(/\.(mp4|webm|mov|m4v)$/i) ? (
+              <video src={msg.media} controls className="rounded-xl max-w-[220px] max-h-[300px]" />
+            ) : (
+              <img src={msg.media} alt="Mídia" className="rounded-xl max-w-[220px] max-h-[300px] object-cover" />
+            )}
           </div>
         ) : (
           <p className="break-words leading-relaxed">{msg.text}</p>

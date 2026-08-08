@@ -6,7 +6,7 @@ import { toast } from "sonner";
 export type LocalMessage = {
   id: string;
   from: "me" | "them";
-  kind: "text" | "audio" | "locked" | "gift";
+  kind: "text" | "audio" | "locked" | "gift" | "media";
   text?: string;
   media?: string;
   seconds?: number;
@@ -230,12 +230,48 @@ export function useChat({ partnerId, partnerName, isDemo }: UseChatOptions) {
     }
   }
 
+  async function sendMediaMessage(
+    mediaUrl: string,
+    mediaType: "foto" | "vídeo",
+  ): Promise<void> {
+    if (!partnerUuid) return;
+    try {
+      const insertPayload = {
+        sender_id: myId,
+        receiver_id: partnerUuid,
+        media_url: mediaUrl,
+        message_kind: "media" as const,
+        content: mediaType === "foto" ? "📷 Foto" : "🎬 Vídeo",
+      };
+      const { data, error } = await supabase
+        .from("chat_messages")
+        .insert(insertPayload)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      if (data) {
+        const local = toLocal(data as DbChatMessage, myId);
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === local.id)) return prev;
+          return [...prev, local];
+        });
+      }
+
+      notifyPartner(partnerUuid, "📷 Mídia recebida", "Nova mídia para você");
+    } catch (err) {
+      console.error("Erro ao enviar mídia:", err);
+    }
+  }
+
   return {
     messages,
     loading,
     sendMessage,
     sendAudioMessage,
     sendGiftMessage,
+    sendMediaMessage,
     myId,
     partnerName,
     isDemo,
