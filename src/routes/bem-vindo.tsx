@@ -336,8 +336,7 @@ function SignupFlow({ open, onOpenChange, gender }: {
     }
   }, [open]);
 
-  /* When camPhase transitions to "active" the <video> element mounts.
-     Attach the stream + play in this effect so the ref is non-null. */
+  /* When camPhase transitions to "active" the <video> element mounts. */
   useEffect(() => {
     if (camPhase !== "active" || !streamRef.current) return;
     const el = videoRef.current;
@@ -351,7 +350,7 @@ function SignupFlow({ open, onOpenChange, gender }: {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
-      audio: false,
+        audio: false,
       });
       streamRef.current = stream;
       setCamPhase("active");
@@ -400,23 +399,7 @@ function SignupFlow({ open, onOpenChange, gender }: {
   }
 
   /* Final account creation */
-  function extractErrorMessage(e: unknown): string {
-    if (!e) return "";
-    const obj = e as Record<string, unknown> & {
-      message?: string;
-      error_description?: string;
-      error?: { message?: string };
-    };
-    return (
-      obj?.message ||
-      obj?.error_description ||
-      obj?.error?.message ||
-      (typeof obj === "object" ? Object.values(obj as object).join(" ") : String(obj))
-    );
-  }
-
   async function finish() {
-    /* Guard: local fields */
     if (!name.trim() || !email.trim() || !password || !dob) {
       alert("Por favor, preencha todos os campos obrigatórios.");
       return;
@@ -434,18 +417,16 @@ function SignupFlow({ open, onOpenChange, gender }: {
     });
 
     if (authError) {
-      console.dir(authError);
-      console.log(JSON.stringify(authError, Object.getOwnPropertyNames(authError)));
-      const msg = extractErrorMessage(authError);
-      alert("Erro no cadastro: " + (msg || "Verifique se o e-mail já não está cadastrado.") + "\n\n[Detalhe] " + (authError?.message || JSON.stringify(authError)));
-      toast.error(msg || "Erro ao criar conta.");
+      const errorMsg = authError.message || "Erro desconhecido ao criar conta.";
+      alert("Erro no cadastro: " + errorMsg);
+      toast.error(errorMsg);
       setSaving(false);
       return;
     }
 
     const userId = authData?.user?.id;
     if (!userId) {
-      alert("Por favor, preencha todos os campos obrigatórios.");
+      alert("Erro crítico: ID do usuário não retornado.");
       setSaving(false);
       return;
     }
@@ -464,7 +445,7 @@ function SignupFlow({ open, onOpenChange, gender }: {
       }
     }
 
-    /* 3 — Upload biometric selfie (failure is non-fatal — account still gets created) */
+    /* 3 — Upload biometric selfie */
     let verificationPhotoUrl: string | null = null;
     if (capturedBlob) {
       try {
@@ -472,18 +453,12 @@ function SignupFlow({ open, onOpenChange, gender }: {
         const { data: vd, error: verErr } = await supabase.storage
           .from("photos")
           .upload(path, capturedBlob, { upsert: true, contentType: "image/jpeg" });
-        if (verErr) {
-          console.warn(
-            "[Signup] Biometric selfie upload failed:",
-            verErr.message || JSON.stringify(verErr),
-          );
-        } else if (vd) {
+        if (!verErr && vd) {
           const { data: { publicUrl } } = supabase.storage.from("photos").getPublicUrl(vd.path);
           verificationPhotoUrl = publicUrl;
         }
       } catch (uploadErr) {
         console.warn("[Signup] Biometric selfie upload exception:", uploadErr);
-        // verificationPhotoUrl remains null — account creation continues normally
       }
     }
 
@@ -509,11 +484,9 @@ function SignupFlow({ open, onOpenChange, gender }: {
       .single();
 
     if (profileError || !profile) {
-      console.dir(profileError);
-      console.log(JSON.stringify(profileError, Object.getOwnPropertyNames(profileError ?? {})));
-      const msg = extractErrorMessage(profileError) || "Erro ao salvar perfil. Tente novamente.";
-      alert("Erro no cadastro: " + msg + "\n\n[Detalhe] " + (profileError?.message || JSON.stringify(profileError)));
-      toast.error(msg);
+      const profileErrorMsg = profileError?.message || "Erro desconhecido ao salvar perfil no banco.";
+      alert("Erro ao salvar perfil: " + profileErrorMsg);
+      toast.error(profileErrorMsg);
       await supabase.auth.signOut();
       setSaving(false);
       return;
@@ -555,374 +528,30 @@ function SignupFlow({ open, onOpenChange, gender }: {
   /* Step validation */
   const next = async () => {
     if (step === 1) {
-      if (!name.trim()) { toast.error("Informe seu nome ou apelido."); return; }
-      if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-        toast.error("Informe um e-mail válido."); return;
-      }
-      if (password.length < 6) { toast.error("A senha deve ter pelo menos 6 caracteres."); return; }
+      if (!name.trim()) { toast.error("Informe seu nome."); return; }
+      if (!email.trim()) { toast.error("Informe seu e-mail."); return; }
+      if (!password || password.length < 6) { toast.error("A senha deve ter pelo menos 6 caracteres."); return; }
       if (!dob) { toast.error("Informe sua data de nascimento."); return; }
       if (ageError) { toast.error(ageError); return; }
-      if (!bio.trim()) { toast.error("Escreva uma breve bio."); return; }
       setStep(2);
     } else if (step === 2) {
-      if (!avatarFile) { toast.error("Foto de perfil obrigatória. Selecione uma imagem."); return; }
       setStep(3);
-    } else {
-      if (camPhase !== "done") { toast.error("Complete a verificação facial para continuar."); return; }
-      await finish();
+      startCamera();
+    } else if (step === 3) {
+      finish();
     }
   };
 
-  /* ── Render ── */
-  const continueDisabledStep1 = !!ageError || saving;
-
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!saving) onOpenChange(v); }}>
-      <DialogContent className="max-h-[92dvh] overflow-y-auto rounded-3xl border-border bg-surface p-5 sm:max-w-[26rem]">
-        <DialogTitle className="sr-only">Criar conta HotMatch</DialogTitle>
-
-        {/* Progress bar */}
-        <div className="flex items-center gap-3">
-          {step > 1 && (
-            <button
-              onClick={() => setStep((s) => s - 1)}
-              className="tap-scale text-muted-foreground"
-            >
-              <ArrowLeft className="size-5" />
-            </button>
-          )}
-          <HotMark className="size-6" />
-          <div className="flex-1">
-            <div className="flex gap-1.5">
-              {Array.from({ length: STEPS }).map((_, i) => (
-                <span
-                  key={i}
-                  className={cn(
-                    "h-1 flex-1 rounded-full transition-all",
-                    i < step ? "bg-gradient-hot" : "bg-surface-2",
-                  )}
-                />
-              ))}
-            </div>
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              Etapa {step} de {STEPS} ·{" "}
-              <span className={isCreator ? "text-gold" : "text-primary"}>
-                {isCreator ? "Criadora VIP" : "Paquera"}
-              </span>
-            </p>
-          </div>
-        </div>
-
-        {/* ── Step 1: Basic info ── */}
-        {step === 1 && (
-          <div className="mt-4 space-y-3">
-            <h2 className="text-lg font-extrabold">Dados básicos</h2>
-
-            <Field
-              label="Seu nome ou apelido *"
-              placeholder="Ex: Lucas ou Mari"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              autoComplete="name"
-            />
-            <Field
-              label="E-mail *"
-              type="email"
-              placeholder="seu@email.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoComplete="email"
-            />
-            <PasswordField
-              label="Senha * (mínimo 6 caracteres)"
-              value={password}
-              onChange={setPassword}
-              show={showPw}
-              onToggle={() => setShowPw((v) => !v)}
-              autoComplete="new-password"
-            />
-
-            {/* Date of birth with strict +18 gate */}
-            <div className="space-y-1.5">
-              <Label className="text-[11px] font-semibold text-muted-foreground">
-                Data de nascimento (+18) *
-              </Label>
-              <Input
-                type="date"
-                value={dob}
-                onChange={(e) => setDob(e.target.value)}
-                className="h-11 rounded-2xl border-border bg-surface-2"
-                max={new Date(new Date().setFullYear(new Date().getFullYear() - 18))
-                  .toISOString()
-                  .split("T")[0]}
-              />
-              {/* Real-time age feedback */}
-              {dob && (
-                <p
-                  className={cn(
-                    "text-[11px] font-semibold",
-                    ageError ? "text-destructive" : "text-green-500",
-                  )}
-                >
-                  {ageError ?? `✓ ${computedAge} anos — você pode continuar.`}
-                </p>
-              )}
-            </div>
-
-            <div className="space-y-1.5">
-              <Label className="text-[11px] font-semibold text-muted-foreground">Bio *</Label>
-              <textarea
-                value={bio}
-                onChange={(e) => setBio(e.target.value)}
-                rows={3}
-                placeholder={
-                  isCreator
-                    ? "Ex: Criadora de conteúdo exclusivo 🔥"
-                    : "Ex: Aqui para curtir e conhecer pessoas!"
-                }
-                className="w-full resize-none rounded-2xl border border-border bg-surface-2 px-4 py-3 text-sm text-foreground outline-none focus:border-primary placeholder:text-muted-foreground/60"
-              />
-            </div>
-          </div>
-        )}
-
-        {/* ── Step 2: Profile photo ── */}
-        {step === 2 && (
-          <div className="mt-4 space-y-5">
-            <h2 className="text-lg font-extrabold">Foto de Perfil</h2>
-            <div className="flex flex-col items-center gap-3">
-              <p className="text-xs font-semibold text-muted-foreground">
-                Foto de perfil{" "}
-                <span className="text-primary">*obrigatória</span>
-              </p>
-              <button
-                onClick={() => avatarInputRef.current?.click()}
-                className={cn(
-                  "tap-scale relative grid size-32 place-items-center rounded-full border-2 border-dashed transition-all",
-                  avatarPreview ? "border-gold bg-gold/10" : "border-border bg-surface-2",
-                )}
-              >
-                {avatarPreview ? (
-                  <img
-                    src={avatarPreview}
-                    alt="Avatar"
-                    className="size-full rounded-full object-cover"
-                  />
-                ) : (
-                  <span className="grid size-28 place-items-center rounded-full bg-surface-2">
-                    <Camera className="size-9 text-muted-foreground" />
-                  </span>
-                )}
-                <span className="absolute -bottom-1 -right-1 grid size-8 place-items-center rounded-full bg-gradient-hot shadow-hot">
-                  <Plus className="size-4 text-white" />
-                </span>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto rounded-3xl border-border bg-surface p-5 sm:max-w-[26rem]">
+        <DialogTitle className="sr-only">Cadastro no HotMatch</DialogTitle>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            {step > 1 && (
+              <button onClick={() => setStep((s) => s - 1)} className="rounded-full p-1 text-muted-foreground hover:text-foreground">
+                <ArrowLeft className="size-5" />
               </button>
-              <p className="text-[11px] text-muted-foreground">
-                Toque para selecionar da galeria ou tirar foto
-              </p>
-              <input
-                ref={avatarInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) { setAvatarFile(f); setAvatarPreview(URL.createObjectURL(f)); }
-                }}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* ── Step 3: Biometric verification ── */}
-        {step === 3 && (
-          <div className="mt-4 space-y-4">
-            <h2 className="text-lg font-extrabold">
-              {isCreator ? "Validação & Selo VIP" : "Validação Anti-Fake"}
-            </h2>
-            <div className="rounded-2xl border border-gold/25 bg-gold/10 p-3">
-              <p className="flex items-center gap-2 text-xs font-bold text-gold">
-                <ShieldCheck className="size-4" /> Verificação facial obrigatória
-              </p>
-              <p className="mt-1 text-[11px] text-muted-foreground">
-                {isCreator
-                  ? "Tire uma selfie para validar sua identidade e liberar saques Pix."
-                  : "Tire uma selfie para confirmar que você é uma pessoa real."}
-              </p>
-            </div>
-
-            <div className="flex flex-col items-center gap-3">
-              <div className="relative flex items-center justify-center">
-                <div
-                  className={cn(
-                    "relative overflow-hidden rounded-full border-4 transition-all duration-500",
-                    camPhase === "done"
-                      ? "border-gold shadow-[0_0_24px_oklch(0.86_0.16_92/0.5)]"
-                      : camPhase === "scanning"
-                      ? "border-primary animate-pulse"
-                      : "border-border",
-                  )}
-                  style={{ width: 200, height: 240 }}
-                >
-                  {(camPhase === "active" || camPhase === "scanning") && (
-                    <video
-                      ref={videoRef}
-                      autoPlay
-                      playsInline
-                      muted
-                      className="size-full object-cover [transform:scaleX(-1)]"
-                    />
-                  )}
-                  {camPhase === "idle" && (
-                    <div className="flex size-full items-center justify-center bg-surface-2">
-                      <Camera className="size-12 text-muted-foreground" />
-                    </div>
-                  )}
-                  {camPhase === "scanning" && (
-                    <div className="absolute inset-0 bg-black/20">
-                      <div
-                        className="absolute h-0.5 w-3/4 translate-x-[16.7%] rounded-full bg-gradient-hot opacity-80"
-                        style={{ animation: "scanLine 1.5s ease-in-out infinite alternate", top: "30%" }}
-                      />
-                    </div>
-                  )}
-                  {camPhase === "done" && capturedPreview && (
-                    <img
-                      src={capturedPreview}
-                      alt="Selfie capturada"
-                      className="size-full object-cover [transform:scaleX(-1)]"
-                    />
-                  )}
-                  {camPhase === "done" && (
-                    <div className="absolute inset-0 flex items-end justify-center bg-gradient-to-t from-black/60 to-transparent pb-4">
-                      <span className="flex items-center gap-1 text-xs font-bold text-white">
-                        <Check className="size-4 text-gold" /> Verificado
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                {(camPhase === "active" || camPhase === "scanning") && (
-                  <>
-                    <span className="absolute left-2 top-2 size-5 rounded-tl-xl border-l-2 border-t-2 border-primary" />
-                    <span className="absolute right-2 top-2 size-5 rounded-tr-xl border-r-2 border-t-2 border-primary" />
-                    <span className="absolute bottom-2 left-2 size-5 rounded-bl-xl border-b-2 border-l-2 border-primary" />
-                    <span className="absolute bottom-2 right-2 size-5 rounded-br-xl border-b-2 border-r-2 border-primary" />
-                  </>
-                )}
-              </div>
-
-              {/* Hidden canvas for frame capture */}
-              <canvas ref={canvasRef} className="hidden" />
-
-              {(camPhase === "scanning" || camPhase === "done") && (
-                <div className="w-full max-w-[200px]">
-                  <div className="h-1.5 overflow-hidden rounded-full bg-surface-2">
-                    <div
-                      className="h-full rounded-full bg-gradient-hot transition-all duration-700"
-                      style={{ width: `${scanPct}%` }}
-                    />
-                  </div>
-                </div>
-              )}
-
-              <p
-                className={cn(
-                  "text-center text-xs",
-                  camPhase === "done" ? "font-semibold text-gold" : "text-muted-foreground",
-                )}
-              >
-                {camPhase === "idle" && "Posicione seu rosto no círculo e ative a câmera"}
-                {camPhase === "active" && "Rosto detectado. Toque em Tirar Selfie quando estiver pronto."}
-                {camPhase === "scanning" && scanMsg}
-                {camPhase === "done" && "Biometria facial salva e enviada para verificação ✓"}
-              </p>
-
-              {camPhase === "idle" && (
-                <Button onClick={startCamera} variant="secondary" className="rounded-full">
-                  <Camera className="size-4" /> Ativar câmera
-                </Button>
-              )}
-              {camPhase === "active" && (
-                <Button
-                  onClick={captureSelfie}
-                  className="rounded-full bg-gradient-hot text-primary-foreground shadow-hot"
-                >
-                  <Camera className="size-4" /> Tirar Selfie
-                </Button>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Main CTA */}
-        <Button
-          onClick={next}
-          disabled={step === 1 ? continueDisabledStep1 : saving}
-          className="mt-5 h-12 w-full rounded-full bg-gradient-hot text-sm font-bold text-primary-foreground shadow-hot disabled:opacity-40"
-        >
-          {saving ? "Criando conta..." : step >= STEPS ? "Criar minha conta" : "Continuar"}
-          <ArrowRight className="size-4" />
-        </Button>
-
-        {/* Explicit age-gate message below button on step 1 */}
-        {step === 1 && ageError && (
-          <p className="mt-2 text-center text-xs font-semibold text-destructive">{ageError}</p>
-        )}
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-/* ────────────────────────── Shared sub-components ────────────────────────── */
-function Field({
-  label,
-  ...props
-}: { label: string } & React.InputHTMLAttributes<HTMLInputElement>) {
-  return (
-    <div className="space-y-1.5">
-      <Label className="text-[11px] font-semibold text-muted-foreground">{label}</Label>
-      <Input className="h-11 rounded-2xl border-border bg-surface-2" {...props} />
-    </div>
-  );
-}
-
-function PasswordField({
-  label,
-  value,
-  onChange,
-  show,
-  onToggle,
-  autoComplete,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  show: boolean;
-  onToggle: () => void;
-  autoComplete?: string;
-}) {
-  return (
-    <div className="space-y-1.5">
-      <Label className="text-[11px] font-semibold text-muted-foreground">{label}</Label>
-      <div className="relative">
-        <Input
-          type={show ? "text" : "password"}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder="••••••"
-          autoComplete={autoComplete}
-          className="h-11 rounded-2xl border-border bg-surface-2 pr-10"
-        />
-        <button
-          type="button"
-          onClick={onToggle}
-          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-          tabIndex={-1}
-        >
-          {show ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-        </button>
-      </div>
-    </div>
-  );
-}
+            )}
+            <span className="text-xs font-bold text-muted-foreground">
+              Etapa {step} de {STEPS} · {
