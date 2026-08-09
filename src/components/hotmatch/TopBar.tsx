@@ -7,9 +7,6 @@ import { useAppState, actions } from "@/lib/hotmatch/store";
 import { supabase } from "@/lib/supabase";
 import type { DbNotification } from "@/lib/supabase";
 
-/* ------------------------------------------------------------------ */
-/*  Coin Badge (male)                                                    */
-/* ------------------------------------------------------------------ */
 export function CoinBadge() {
   const { coins } = useAppState();
   return (
@@ -23,9 +20,6 @@ export function CoinBadge() {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Creator Badge (female)                                              */
-/* ------------------------------------------------------------------ */
 function CreatorBadge({ onClick }: { onClick: () => void }) {
   return (
     <button
@@ -44,9 +38,6 @@ function CreatorBadge({ onClick }: { onClick: () => void }) {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Gamification Modal (female)                                         */
-/* ------------------------------------------------------------------ */
 function GamificationModal({ onClose }: { onClose: () => void }) {
   const { xp, level, earnings, profileId } = useAppState();
   const [postCount, setPostCount] = useState(0);
@@ -82,7 +73,6 @@ function GamificationModal({ onClose }: { onClose: () => void }) {
         style={{ boxShadow: "0 0 40px oklch(0.86 0.16 92 / 0.2)" }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
         <div className="relative bg-gradient-to-br from-gold/20 via-pink-500/10 to-transparent p-5">
           <button
             onClick={onClose}
@@ -102,7 +92,6 @@ function GamificationModal({ onClose }: { onClose: () => void }) {
             </div>
           </div>
 
-          {/* XP bar */}
           <div className="mt-4">
             <div className="mb-1.5 flex justify-between text-[11px] font-semibold">
               <span className="text-muted-foreground">{xp.toLocaleString("pt-BR")} XP</span>
@@ -151,9 +140,6 @@ function GamificationModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Locked Like Row (male recipient — blurred avatar + unlock button)  */
-/* ------------------------------------------------------------------ */
 const UNLOCK_COST = 15;
 
 function LockedLikeRow({ n }: { n: DbNotification }) {
@@ -173,7 +159,6 @@ function LockedLikeRow({ n }: { n: DbNotification }) {
 
   return (
     <div className="flex items-center gap-3 py-3">
-      {/* Avatar */}
       <div className="relative shrink-0">
         {n.actor_avatar_url ? (
           <img
@@ -214,15 +199,11 @@ function LockedLikeRow({ n }: { n: DbNotification }) {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Notifications Drawer                                                */
-/* ------------------------------------------------------------------ */
 function NotificationsDrawer({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
-  const { notifications, loading, unreadCount, markAllRead } = useNotifications();
+  const { notifications, loading } = useNotifications();
   const { gender } = useAppState();
 
-  // Blindagem de segurança: garante que se notifications vier nulo, vira um array vazio sem quebrar
   const safeNotifs    = Array.isArray(notifications) ? notifications : [];
   const msgNotifs     = safeNotifs.filter((n) => n.type === "message");
   const matchNotifs   = safeNotifs.filter((n) => n.type === "match");
@@ -393,10 +374,6 @@ function Section({
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Error Boundary — wraps NotificationsDrawer so a crash there never  */
-/*  propagates to the root error page.                                 */
-/* ------------------------------------------------------------------ */
 class NotifErrorBoundary extends Component<
   { children: ReactNode; onClose: () => void },
   { hasError: boolean }
@@ -439,9 +416,6 @@ class NotifErrorBoundary extends Component<
   }
 }
 
-/* ------------------------------------------------------------------ */
-/*  Notification Bell                                                   */
-/* ------------------------------------------------------------------ */
 export function NotificationBell() {
   const [open, setOpen] = useState(false);
   const { unreadCount, markAllRead } = useNotifications();
@@ -465,4 +439,10 @@ export function NotificationBell() {
         )}
       </button>
       {open && (
-        <NotifErrorBoundary onCl
+        <NotifErrorBoundary onClose={() => setOpen(false)}>
+          <NotificationsDrawer onClose={() => setOpen(false)} />
+        </NotifErrorBoundary>
+      )}
+    </>
+  );
+              }
