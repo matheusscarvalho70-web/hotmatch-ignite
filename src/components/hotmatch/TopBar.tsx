@@ -204,13 +204,18 @@ function NotificationsDrawer({ onClose }: { onClose: () => void }) {
   const { notifications, loading } = useNotifications();
   const { gender } = useAppState();
 
-  const safeNotifs    = Array.isArray(notifications) ? notifications : [];
-  const msgNotifs     = safeNotifs.filter((n) => n.type === "message");
-  const matchNotifs   = safeNotifs.filter((n) => n.type === "match");
-  const likeNotifs    = safeNotifs.filter((n) => n.type === "like");
-  const feedNotifs    = safeNotifs.filter((n) => n.type === "feed");
-  const welcomeNotifs = safeNotifs.filter((n) => n.type === "welcome");
-  const otherNotifs   = safeNotifs.filter((n) => !["message", "match", "like", "feed", "welcome"].includes(n.type));
+  const safeNotifs = Array.isArray(notifications) ? notifications : [];
+  
+  // Filtros flexíveis para evitar que qualquer variação de tipo esconda a notificação
+  const msgNotifs     = safeNotifs.filter((n) => n.type?.toLowerCase() === "message" || !n.type);
+  const matchNotifs   = safeNotifs.filter((n) => n.type?.toLowerCase() === "match");
+  const likeNotifs    = safeNotifs.filter((n) => n.type?.toLowerCase() === "like");
+  const feedNotifs    = safeNotifs.filter((n) => n.type?.toLowerCase() === "feed");
+  const welcomeNotifs = safeNotifs.filter((n) => n.type?.toLowerCase() === "welcome");
+  const otherNotifs   = safeNotifs.filter((n) => {
+    const t = n.type?.toLowerCase();
+    return t && !["message", "match", "like", "feed", "welcome"].includes(t);
+  });
   const isMale = gender === "male";
 
   if (loading) return null;
@@ -447,11 +452,8 @@ export function NotificationBell() {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Main TopBar Component (Exported to fix missing export error)       */
-/* ------------------------------------------------------------------ */
 export function TopBar() {
-  const { gender, vip } = useAppState();
+  const { gender } = useAppState();
   const [showGamification, setShowGamification] = useState(false);
   const isMale = gender === "male";
 
@@ -475,5 +477,4 @@ export function TopBar() {
       )}
     </header>
   );
-                                   }
-                  
+}
