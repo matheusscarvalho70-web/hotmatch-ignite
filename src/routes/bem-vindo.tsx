@@ -51,6 +51,33 @@ function delay(ms: number) {
   return new Promise<void>((r) => setTimeout(r, ms));
 }
 
+function serializeError(err: unknown): string {
+  if (!err) return "null/undefined";
+  if (err instanceof Error) {
+    return JSON.stringify({
+      name: err.name,
+      message: err.message,
+      stack: err.stack,
+      cause: err.cause,
+      ...(err as Record<string, unknown>),
+    }, null, 2);
+  }
+  if (typeof err === "object") {
+    return JSON.stringify(err, null, 2);
+  }
+  return String(err);
+}
+
+function errMessage(err: unknown): string {
+  if (!err) return "Erro desconhecido.";
+  if (err instanceof Error) return err.message;
+  if (typeof err === "object" && err !== null) {
+    const e = err as Record<string, unknown>;
+    if (typeof e.message === "string") return e.message;
+  }
+  return String(err);
+}
+
 function WelcomePage() {
   const [gender, setGender] = useState<Gender | null>(null);
   const [signupOpen, setSignupOpen] = useState(false);
@@ -397,131 +424,143 @@ function SignupFlow({ open, onOpenChange, gender }: {
 
     setSaving(true);
 
-    /* 1 — Create auth user */
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email: email.trim().toLowerCase(),
-      password,
-      options: {
-        data: { full_name: name.trim(), name: name.trim() },
-      },
-    });
-
-    if (authError) {
-      const errorMsg = authError.message || "Erro desconhecido ao criar conta.";
-      alert("Erro no cadastro: " + errorMsg + "\n\n[Detalhe] " + JSON.stringify(authError));
-      toast.error(errorMsg);
-      setSaving(false);
-      return;
-    }
-
-    const userId = authData?.user?.id;
-    if (!userId) {
-      alert("Erro crítico: ID do usuário não retornado pelo Supabase.");
-      setSaving(false);
-      return;
-    }
-
-    /* 2 — Upload avatar */
-    let avatarUrl: string | null = null;
-    if (avatarFile) {
-      const ext = avatarFile.name.split(".").pop() ?? "jpg";
-      const path = `avatars/${userId}_${Date.now()}.${ext}`;
-      const { data: sd, error: avatarErr } = await supabase.storage
-        .from("photos")
-        .upload(path, avatarFile, { upsert: true, contentType: avatarFile.type });
-      if (avatarErr) {
-        console.warn("[Signup] Avatar upload failed:", avatarErr.message);
-      } else if (sd) {
-        const { data: { publicUrl } } = supabase.storage.from("photos").getPublicUrl(sd.path);
-        avatarUrl = publicUrl;
-      }
-    }
-
-    /* 3 — Upload biometric selfie (failure is non-fatal) */
-    let verificationPhotoUrl: string | null = null;
-    if (capturedBlob) {
-      try {
-        const path = `verifications/${userId}_${Date.now()}_selfie.jpg`;
-        const { data: vd, error: verErr } = await supabase.storage
-          .from("photos")
-          .upload(path, capturedBlob, { upsert: true, contentType: "image/jpeg" });
-        if (verErr) {
-          console.warn("[Signup] Biometric selfie upload failed:", verErr.message);
-        } else if (vd) {
-          const { data: { publicUrl } } = supabase.storage.from("photos").getPublicUrl(vd.path);
-          verificationPhotoUrl = publicUrl;
-        }
-      } catch (uploadErr) {
-        console.warn("[Signup] Biometric selfie upload exception:", uploadErr);
-      }
-    }
-
-    /* 4 — Insert profile linked to auth user */
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .insert({
-        id: userId,
-        gender,
-        name: name.trim(),
-        age: computedAge ?? 18,
-        bio: bio.trim(),
-        location: "Brasil",
-        avatar_url: avatarUrl,
-        coin_balance: 0,
-        earnings_brl: 0,
-        is_verified: false,
-        is_demo: false,
-        verification_status: verificationPhotoUrl ? "pending" : "unverified",
-        verification_photo_url: verificationPhotoUrl,
-      })
-      .select()
-      .single();
-
-    if (profileError || !profile) {
-      const profileErrorMsg = profileError?.message || "Erro desconhecido ao salvar perfil no banco.";
-      alert("Erro no cadastro: " + profileErrorMsg + "\n\n[Detalhe] " + JSON.stringify(profileError));
-      toast.error(profileErrorMsg);
-      await supabase.auth.signOut();
-      setSaving(false);
-      return;
-    }
-
-    /* 5 — Hydrate store */
-    actions.setProfile({
-      profileId: profile.id,
-      gender,
-      name: profile.name,
-      avatarUrl: profile.avatar_url,
-      coins: profile.coin_balance,
-      earnings: Number(profile.earnings_brl),
-      xp: profile.xp ?? 0,
-      level: profile.level ?? "bronze",
-      vip: false,
-    });
-
-    /* 6 — Register push notifications (OneSignal) */
-    registerPush(profile.id).catch(() => {});
-
-    /* 7 — Insert welcome notification */
-    supabase
-      .from("notifications")
-      .insert({
-        user_id: profile.id,
-        type: "match",
-        title: "Bem-vindo ao HotMatch! 🔥",
-        content: isCreator
-          ? "Seu perfil está sendo verificado. Em breve você poderá sacar seus ganhos!"
-          : "Explore o feed e converse com pessoas incríveis.",
-        is_read: false,
-      })
-      .then(({ error: nErr }) => {
-        if (nErr) console.warn("[HotMatch] Notification insert failed:", nErr);
+    try {
+      /* 1 — Create auth user */
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: email.trim().toLowerCase(),
+        password,
+        options: {
+          data: { full_name: name.trim(), name: name.trim() },
+        },
       });
 
-    setSaving(false);
-    onOpenChange(false);
-    toast.success(`Bem-vindo ao HotMatch, ${profile.name}! 🔥`);
-    navigate({ to: "/" });
+      if (authError) {
+        console.error("Erro detalhado Supabase (auth):", serializeError(authError));
+        const msg = errMessage(authError);
+        alert("Erro no cadastro: " + msg + "\n\n[Detalhe] " + serializeError(authError));
+        toast.error(msg);
+        setSaving(false);
+        return;
+      }
+
+      const userId = authData?.user?.id;
+      if (!userId) {
+        console.error("Erro detalhado Supabase: signUp retornou sem user id", serializeError(authData));
+        alert("Erro crítico: ID do usuário não retornado pelo Supabase.\n\n[Detalhe] " + serializeError(authData));
+        setSaving(false);
+        return;
+      }
+
+      /* 2 — Upload avatar */
+      let avatarUrl: string | null = null;
+      if (avatarFile) {
+        const ext = avatarFile.name.split(".").pop() ?? "jpg";
+        const path = `avatars/${userId}_${Date.now()}.${ext}`;
+        const { data: sd, error: avatarErr } = await supabase.storage
+          .from("photos")
+          .upload(path, avatarFile, { upsert: true, contentType: avatarFile.type });
+        if (avatarErr) {
+          console.warn("[Signup] Avatar upload failed:", serializeError(avatarErr));
+        } else if (sd) {
+          const { data: { publicUrl } } = supabase.storage.from("photos").getPublicUrl(sd.path);
+          avatarUrl = publicUrl;
+        }
+      }
+
+      /* 3 — Upload biometric selfie (failure is non-fatal) */
+      let verificationPhotoUrl: string | null = null;
+      if (capturedBlob) {
+        try {
+          const path = `verifications/${userId}_${Date.now()}_selfie.jpg`;
+          const { data: vd, error: verErr } = await supabase.storage
+            .from("photos")
+            .upload(path, capturedBlob, { upsert: true, contentType: "image/jpeg" });
+          if (verErr) {
+            console.warn("[Signup] Biometric selfie upload failed:", serializeError(verErr));
+          } else if (vd) {
+            const { data: { publicUrl } } = supabase.storage.from("photos").getPublicUrl(vd.path);
+            verificationPhotoUrl = publicUrl;
+          }
+        } catch (uploadErr) {
+          console.warn("[Signup] Biometric selfie upload exception:", serializeError(uploadErr));
+        }
+      }
+
+      /* 4 — Insert profile linked to auth user */
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .insert({
+          id: userId,
+          gender,
+          name: name.trim(),
+          age: computedAge ?? 18,
+          bio: bio.trim(),
+          location: "Brasil",
+          avatar_url: avatarUrl,
+          coin_balance: 0,
+          earnings_brl: 0,
+          is_verified: false,
+          is_demo: false,
+          verification_status: verificationPhotoUrl ? "pending" : "unverified",
+          verification_photo_url: verificationPhotoUrl,
+        })
+        .select()
+        .single();
+
+      if (profileError || !profile) {
+        console.error("Erro detalhado Supabase (profile):", serializeError(profileError));
+        const msg = errMessage(profileError) || "Erro desconhecido ao salvar perfil no banco.";
+        alert("Erro no cadastro: " + msg + "\n\n[Detalhe] " + serializeError(profileError));
+        toast.error(msg);
+        await supabase.auth.signOut();
+        setSaving(false);
+        return;
+      }
+
+      /* 5 — Hydrate store */
+      actions.setProfile({
+        profileId: profile.id,
+        gender,
+        name: profile.name,
+        avatarUrl: profile.avatar_url,
+        coins: profile.coin_balance,
+        earnings: Number(profile.earnings_brl),
+        xp: profile.xp ?? 0,
+        level: profile.level ?? "bronze",
+        vip: false,
+      });
+
+      /* 6 — Register push notifications (OneSignal) */
+      registerPush(profile.id).catch((e) => console.warn("[Signup] OneSignal register failed:", serializeError(e)));
+
+      /* 7 — Insert welcome notification */
+      supabase
+        .from("notifications")
+        .insert({
+          user_id: profile.id,
+          type: "match",
+          title: "Bem-vindo ao HotMatch! 🔥",
+          content: isCreator
+            ? "Seu perfil está sendo verificado. Em breve você poderá sacar seus ganhos!"
+            : "Explore o feed e converse com pessoas incríveis.",
+          is_read: false,
+        })
+        .then(({ error: nErr }) => {
+          if (nErr) console.warn("[HotMatch] Notification insert failed:", serializeError(nErr));
+        });
+
+      setSaving(false);
+      onOpenChange(false);
+      toast.success(`Bem-vindo ao HotMatch, ${profile.name}! 🔥`);
+      navigate({ to: "/" });
+
+    } catch (err) {
+      console.error("Erro detalhado Supabase:", serializeError(err));
+      const msg = errMessage(err);
+      alert("Erro no cadastro: " + msg + "\n\n[Detalhe] " + serializeError(err));
+      toast.error(msg);
+      setSaving(false);
+    }
   }
 
   const next = async () => {
