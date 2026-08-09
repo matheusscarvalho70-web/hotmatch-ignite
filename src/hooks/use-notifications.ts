@@ -16,7 +16,7 @@ export function useNotifications() {
 
     let cancelled = false;
 
-    // Busca apenas as notificações do usuário atual logado
+    // Busca o histórico do usuário logado (lidas e não lidas) ordenadas da mais recente para a mais antiga
     supabase
       .from("notifications")
       .select("*")
@@ -32,7 +32,7 @@ export function useNotifications() {
         }
       });
 
-    // Canal em tempo real apenas para o usuário logado
+    // Escuta novas notificações em tempo real para este usuário
     const channel = supabase
       .channel(`notif:${profileId}`)
       .on("postgres_changes", {
@@ -53,6 +53,7 @@ export function useNotifications() {
     if (!profileId) return;
     await supabase.from("notifications").update({ is_read: true })
       .eq("user_id", profileId).eq("is_read", false);
+    
     setNotifications((p) => p.map((n) => ({ ...n, is_read: true })));
   }
 
