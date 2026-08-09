@@ -437,7 +437,7 @@ function SignupFlow({ open, onOpenChange, gender }: {
       console.dir(authError);
       console.log(JSON.stringify(authError, Object.getOwnPropertyNames(authError)));
       const msg = extractErrorMessage(authError);
-      alert("Erro no cadastro: " + (msg || "Verifique se o e-mail já não está cadastrado."));
+      alert("Erro no cadastro: " + (msg || "Verifique se o e-mail já não está cadastrado.") + "\n\n[Detalhe] " + (authError?.message || JSON.stringify(authError)));
       toast.error(msg || "Erro ao criar conta.");
       setSaving(false);
       return;
@@ -512,7 +512,7 @@ function SignupFlow({ open, onOpenChange, gender }: {
       console.dir(profileError);
       console.log(JSON.stringify(profileError, Object.getOwnPropertyNames(profileError ?? {})));
       const msg = extractErrorMessage(profileError) || "Erro ao salvar perfil. Tente novamente.";
-      alert("Erro no cadastro: " + msg);
+      alert("Erro no cadastro: " + msg + "\n\n[Detalhe] " + (profileError?.message || JSON.stringify(profileError)));
       toast.error(msg);
       await supabase.auth.signOut();
       setSaving(false);
