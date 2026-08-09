@@ -4,12 +4,10 @@ import {
   ArrowLeft,
   ArrowRight,
   Camera,
-  Check,
   Crown,
   Eye,
   EyeOff,
   Lock,
-  Plus,
   ShieldCheck,
   Sparkles,
   User,
@@ -40,7 +38,6 @@ export const Route = createFileRoute("/bem-vindo")({
 
 type Gender = "male" | "female";
 
-/* ─── returns the REAL age — no clamping ─── */
 function calcAge(dob: string): number {
   const birth = new Date(dob);
   const today = new Date();
@@ -50,9 +47,10 @@ function calcAge(dob: string): number {
   return age;
 }
 
-function delay(ms: number) { return new Promise<void>((r) => setTimeout(r, ms)); }
+function delay(ms: number) {
+  return new Promise<void>((r) => setTimeout(r, ms));
+}
 
-/* ────────────────────────── Page ────────────────────────── */
 function WelcomePage() {
   const [gender, setGender] = useState<Gender | null>(null);
   const [signupOpen, setSignupOpen] = useState(false);
@@ -64,7 +62,10 @@ function WelcomePage() {
     if (profileId) navigate({ to: "/", replace: true });
   }, [profileId, navigate]);
 
-  const start = (g: Gender) => { setGender(g); setSignupOpen(true); };
+  const start = (g: Gender) => {
+    setGender(g);
+    setSignupOpen(true);
+  };
 
   return (
     <div className="min-h-screen pb-16">
@@ -147,7 +148,6 @@ function WelcomePage() {
   );
 }
 
-/* ────────────────────────── Choice card ────────────────────────── */
 function ChoiceCard({ onClick, icon, title, desc, chip, tone, genderIcon }: {
   onClick: () => void; icon: React.ReactNode; title: string; desc: string;
   chip: string; tone: "hot" | "gold"; genderIcon: React.ReactNode;
@@ -181,7 +181,6 @@ function ChoiceCard({ onClick, icon, title, desc, chip, tone, genderIcon }: {
   );
 }
 
-/* ────────────────────────── Login dialog ────────────────────────── */
 function LoginDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
@@ -282,7 +281,6 @@ function LoginDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: 
   );
 }
 
-/* ────────────────────────── Signup flow ────────────────────────── */
 function SignupFlow({ open, onOpenChange, gender }: {
   open: boolean; onOpenChange: (v: boolean) => void; gender: Gender;
 }) {
@@ -293,7 +291,6 @@ function SignupFlow({ open, onOpenChange, gender }: {
   const [step, setStep] = useState(1);
   const [saving, setSaving] = useState(false);
 
-  /* Step 1 */
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -301,19 +298,16 @@ function SignupFlow({ open, onOpenChange, gender }: {
   const [dob, setDob] = useState("");
   const [bio, setBio] = useState("");
 
-  /* computed age — updates every keystroke on dob */
   const computedAge = dob ? calcAge(dob) : null;
   const ageError =
     computedAge !== null && computedAge < 18
       ? "Você precisa ter no mínimo 18 anos para se cadastrar."
       : null;
 
-  /* Step 2 — avatar */
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
-  /* Step 3 — biometrics */
   const [camPhase, setCamPhase] = useState<"idle" | "active" | "scanning" | "done">("idle");
   const [scanMsg, setScanMsg] = useState("");
   const [scanPct, setScanPct] = useState(0);
@@ -323,7 +317,6 @@ function SignupFlow({ open, onOpenChange, gender }: {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
-  /* Reset everything when dialog closes */
   useEffect(() => {
     if (!open) {
       streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -336,7 +329,6 @@ function SignupFlow({ open, onOpenChange, gender }: {
     }
   }, [open]);
 
-  /* When camPhase transitions to "active" the <video> element mounts. */
   useEffect(() => {
     if (camPhase !== "active" || !streamRef.current) return;
     const el = videoRef.current;
@@ -345,7 +337,6 @@ function SignupFlow({ open, onOpenChange, gender }: {
     el.play().catch(() => {});
   }, [camPhase]);
 
-  /* Camera helpers */
   async function startCamera() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -398,7 +389,6 @@ function SignupFlow({ open, onOpenChange, gender }: {
     toast.success(isCreator ? "Selo de Criadora VIP validado!" : "Perfil verificado como real!");
   }
 
-  /* Final account creation */
   async function finish() {
     if (!name.trim() || !email.trim() || !password || !dob) {
       alert("Por favor, preencha todos os campos obrigatórios.");
@@ -407,7 +397,6 @@ function SignupFlow({ open, onOpenChange, gender }: {
 
     setSaving(true);
 
-    /* 1 — Create Supabase Auth user */
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email: email.trim().toLowerCase(),
       password,
@@ -431,7 +420,6 @@ function SignupFlow({ open, onOpenChange, gender }: {
       return;
     }
 
-    /* 2 — Upload avatar */
     let avatarUrl: string | null = null;
     if (avatarFile) {
       const ext = avatarFile.name.split(".").pop() ?? "jpg";
@@ -445,7 +433,6 @@ function SignupFlow({ open, onOpenChange, gender }: {
       }
     }
 
-    /* 3 — Upload biometric selfie */
     let verificationPhotoUrl: string | null = null;
     if (capturedBlob) {
       try {
@@ -462,7 +449,6 @@ function SignupFlow({ open, onOpenChange, gender }: {
       }
     }
 
-    /* 4 — Insert profile linked to auth user */
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .insert({
@@ -492,7 +478,6 @@ function SignupFlow({ open, onOpenChange, gender }: {
       return;
     }
 
-    /* 5 — Hydrate store */
     actions.setProfile({
       profileId: profile.id,
       gender,
@@ -525,7 +510,6 @@ function SignupFlow({ open, onOpenChange, gender }: {
     navigate({ to: "/" });
   }
 
-  /* Step validation */
   const next = async () => {
     if (step === 1) {
       if (!name.trim()) { toast.error("Informe seu nome."); return; }
@@ -554,4 +538,21 @@ function SignupFlow({ open, onOpenChange, gender }: {
               </button>
             )}
             <span className="text-xs font-bold text-muted-foreground">
-              Etapa {step} de {STEPS} · {
+              Etapa {step} de {STEPS} · {isCreator ? "Criadora VIP" : "Paquera"}
+            </span>
+          </div>
+          <span className="grid size-8 place-items-center rounded-xl bg-gold/10 text-gold">
+            {isCreator ? <Crown className="size-4" /> : <HotMark className="size-5" />}
+          </span>
+        </div>
+
+        <div className="mt-3 flex gap-1.5">
+          {Array.from({ length: STEPS }).map((_, i) => (
+            <div key={i} className={cn("h-1 flex-1 rounded-full transition-colors", i + 1 <= step ? "bg-gradient-hot" : "bg-surface-2")} />
+          ))}
+        </div>
+
+        {step === 1 && (
+          <div className="mt-4 space-y-3">
+            <h2 className="text-lg font-extrabold tracking-tight">Crie sua conta</h2>
+            <Field label="Nome ou Apelido" placeholder="Seu nome" value={name} onChange={(e) => setName(e.target.value)}
