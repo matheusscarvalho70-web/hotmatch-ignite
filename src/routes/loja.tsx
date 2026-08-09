@@ -181,7 +181,7 @@ function BuyerView({ isCreator }: { isCreator: boolean }) {
             ))}
           </ul>
           <button
-            onClick={() => startPayment("vip")}
+            onClick={() => startPayment("vip", "vip")}
             disabled={vip || loading !== null}
             className="tap-scale mt-4 w-full rounded-full bg-gradient-gold py-3.5 text-sm font-extrabold text-gold-foreground shadow-gold disabled:opacity-60"
           >

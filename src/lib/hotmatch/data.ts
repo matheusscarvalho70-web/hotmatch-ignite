@@ -176,10 +176,10 @@ export const initialMessages: Message[] = [
 ];
 
 export const coinPacks = [
-  { id: "c1", coins: 50, price: 10, bonus: 0, tag: "" },
-  { id: "c2", coins: 150, price: 25, bonus: 15, tag: "Mais popular" },
-  { id: "c3", coins: 400, price: 60, bonus: 60, tag: "Melhor valor" },
-  { id: "c4", coins: 1000, price: 130, bonus: 200, tag: "Whale" },
+  { id: "50", coins: 50, price: 10, bonus: 0, tag: "" },
+  { id: "150", coins: 150, price: 25, bonus: 15, tag: "Mais popular" },
+  { id: "400", coins: 400, price: 60, bonus: 60, tag: "Melhor valor" },
+  { id: "1000", coins: 1000, price: 130, bonus: 200, tag: "Whale" },
 ];
 
 export const salesHistory = [

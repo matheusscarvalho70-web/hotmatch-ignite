@@ -8,10 +8,10 @@ const corsHeaders = {
 };
 
 const COIN_PACKS: Record<string, { coins: number; bonus: number; price: number; label: string }> = {
-  c1: { coins: 50, bonus: 0, price: 10, label: "Pacote Iniciante" },
-  c2: { coins: 150, bonus: 15, price: 25, label: "Pacote Popular" },
-  c3: { coins: 400, bonus: 60, price: 60, label: "Pacote Avançado" },
-  c4: { coins: 1000, bonus: 200, price: 130, label: "Pacote Whale" },
+  "50": { coins: 50, bonus: 0, price: 10, label: "Pacote Iniciante" },
+  "150": { coins: 150, bonus: 15, price: 25, label: "Pacote Popular" },
+  "400": { coins: 400, bonus: 60, price: 60, label: "Pacote Avançado" },
+  "1000": { coins: 1000, bonus: 200, price: 130, label: "Pacote Whale" },
 };
 
 const VIP_PRICE = 39.9;
