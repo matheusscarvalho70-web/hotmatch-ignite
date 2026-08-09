@@ -8,27 +8,38 @@ export function useNotifications() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!profileId) { setNotifications([]); setLoading(false); return; }
+    // Vamos testar se o profileId existe
+    if (!profileId) { 
+      console.log("ERRO: profileId está vazio!");
+      setNotifications([]); 
+      setLoading(false); 
+      return; 
+    }
+
     let cancelled = false;
 
+    // Removemos temporariamente o filtro de user_id para testar se *qualquer* notificação aparece
     supabase
       .from("notifications")
       .select("*")
-      .eq("user_id", profileId)
       .order("created_at", { ascending: false })
       .limit(20)
       .then(({ data, error }) => {
         if (!cancelled) {
-          if (!error && data) setNotifications(data as DbNotification[]);
+          if (error) {
+            console.log("Erro do Supabase:", error.message);
+          } else {
+            console.log("Notificações encontradas na tabela inteira:", data);
+            if (data) setNotifications(data as DbNotification[]);
+          }
           setLoading(false);
         }
       });
 
     const channel = supabase
-      .channel(`notif:${profileId}`)
+      .channel(`notif:global-debug`)
       .on("postgres_changes", {
-        event: "INSERT", schema: "public", table: "notifications",
-        filter: `user_id=eq.${profileId}`,
+        event: "INSERT", schema: "public", table: "notifications"
       }, (payload) => {
         if (!cancelled) setNotifications((p) => [payload.new as DbNotification, ...p]);
       })
@@ -43,7 +54,7 @@ export function useNotifications() {
   async function markAllRead() {
     if (!profileId) return;
     await supabase.from("notifications").update({ is_read: true })
-      .eq("user_id", profileId).eq("is_read", false);
+      .eq("user_id", profileId).eq("is_read: false", false);
     setNotifications((p) => p.map((n) => ({ ...n, is_read: true })));
   }
 
