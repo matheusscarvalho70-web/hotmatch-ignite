@@ -284,6 +284,19 @@ async function notifyPartner(
   body: string,
 ) {
   try {
+    supabase
+      .from("notifications")
+      .insert({
+        user_id: receiverId,
+        type: "message",
+        title,
+        content: body,
+        is_read: false,
+      })
+      .then(({ error }) => {
+        if (error) console.warn("[Chat] notification insert failed:", error);
+      });
+
     const { data } = await supabase
       .from("profiles")
       .select("onesignal_player_id")
@@ -300,5 +313,5 @@ async function notifyPartner(
   } catch (e) {
     console.warn("[Push] notifyPartner failed:", e);
   }
-                    }
+}
     
