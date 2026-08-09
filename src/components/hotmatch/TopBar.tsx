@@ -445,4 +445,35 @@ export function NotificationBell() {
       )}
     </>
   );
-              }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Main TopBar Component (Exported to fix missing export error)       */
+/* ------------------------------------------------------------------ */
+export function TopBar() {
+  const { gender, vip } = useAppState();
+  const [showGamification, setShowGamification] = useState(false);
+  const isMale = gender === "male";
+
+  return (
+    <header className="sticky top-0 z-50 flex items-center justify-between border-b border-border bg-background/80 px-4 py-2.5 backdrop-blur-md">
+      <div className="flex items-center gap-2.5">
+        <HotMark />
+      </div>
+
+      <div className="flex items-center gap-2">
+        {isMale ? (
+          <CoinBadge />
+        ) : (
+          <CreatorBadge onClick={() => setShowGamification(true)} />
+        )}
+        <NotificationBell />
+      </div>
+
+      {showGamification && (
+        <GamificationModal onClose={() => setShowGamification(false)} />
+      )}
+    </header>
+  );
+                                   }
+                  
