@@ -222,12 +222,14 @@ function NotificationsDrawer({ onClose }: { onClose: () => void }) {
   const { notifications, loading, unreadCount, markAllRead } = useNotifications();
   const { gender } = useAppState();
 
-  const msgNotifs   = notifications.filter((n) => n.type === "message");
-  const matchNotifs = notifications.filter((n) => n.type === "match");
-  const likeNotifs  = notifications.filter((n) => n.type === "like");
-  const feedNotifs  = notifications.filter((n) => n.type === "feed");
-  const welcomeNotifs = notifications.filter((n) => n.type === "welcome");
-  const otherNotifs = notifications.filter((n) => !["message", "match", "like", "feed", "welcome"].includes(n.type));
+  // Blindagem de segurança: garante que se notifications vier nulo, vira um array vazio sem quebrar
+  const safeNotifs    = Array.isArray(notifications) ? notifications : [];
+  const msgNotifs     = safeNotifs.filter((n) => n.type === "message");
+  const matchNotifs   = safeNotifs.filter((n) => n.type === "match");
+  const likeNotifs    = safeNotifs.filter((n) => n.type === "like");
+  const feedNotifs    = safeNotifs.filter((n) => n.type === "feed");
+  const welcomeNotifs = safeNotifs.filter((n) => n.type === "welcome");
+  const otherNotifs   = safeNotifs.filter((n) => !["message", "match", "like", "feed", "welcome"].includes(n.type));
   const isMale = gender === "male";
 
   if (loading) return null;
@@ -344,7 +346,7 @@ function NotificationsDrawer({ onClose }: { onClose: () => void }) {
             </Section>
           )}
 
-          {notifications.length === 0 && (
+          {safeNotifs.length === 0 && (
             <div className="flex flex-col items-center gap-3 py-12 text-center">
               <span className="grid size-14 place-items-center rounded-full bg-surface-2">
                 <Bell className="size-6 text-muted-foreground" />
@@ -440,7 +442,7 @@ class NotifErrorBoundary extends Component<
 /* ------------------------------------------------------------------ */
 /*  Notification Bell                                                   */
 /* ------------------------------------------------------------------ */
-function NotificationBell() {
+export function NotificationBell() {
   const [open, setOpen] = useState(false);
   const { unreadCount, markAllRead } = useNotifications();
 
@@ -463,51 +465,4 @@ function NotificationBell() {
         )}
       </button>
       {open && (
-        <NotifErrorBoundary onClose={() => setOpen(false)}>
-          <NotificationsDrawer onClose={() => setOpen(false)} />
-        </NotifErrorBoundary>
-      )}
-    </>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  TopBar                                                              */
-/* ------------------------------------------------------------------ */
-export function TopBar({ title, right }: { title?: string; right?: React.ReactNode }) {
-  const { gender } = useAppState();
-  const [gamificationOpen, setGamificationOpen] = useState(false);
-  const isCreator = gender === "female";
-
-  const defaultRight = isCreator ? (
-    <CreatorBadge onClick={() => setGamificationOpen(true)} />
-  ) : (
-    <CoinBadge />
-  );
-
-  return (
-    <>
-      <header className="sticky top-0 z-40 flex items-center justify-between gap-3 bg-gradient-to-b from-background via-background/90 to-transparent px-4 pb-4 pt-[calc(env(safe-area-inset-top)+0.9rem)]">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="grid size-9 shrink-0 place-items-center rounded-2xl border border-gold/25 bg-surface-2/80 shadow-hot">
-            <HotMark className="size-5" />
-          </span>
-          <h1 className="truncate text-lg font-extrabold tracking-tight">
-            {title ?? (
-              <>
-                Hot<span className="text-gradient-gold">Match</span>
-              </>
-            )}
-          </h1>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <NotificationBell />
-          {right ?? defaultRight}
-        </div>
-      </header>
-      {gamificationOpen && (
-        <GamificationModal onClose={() => setGamificationOpen(false)} />
-      )}
-    </>
-  );
-}
+        <NotifErrorBoundary onCl
