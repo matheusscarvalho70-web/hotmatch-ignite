@@ -61,7 +61,7 @@ export type DbUserPhoto = {
 export type DbNotification = {
   id: string;
   user_id: string;
-  type: "message" | "match" | "like" | "feed";
+  type: "message" | "match" | "like" | "feed" | "welcome";
   title: string;
   content: string | null;
   is_read: boolean;

@@ -226,7 +226,8 @@ function NotificationsDrawer({ onClose }: { onClose: () => void }) {
   const matchNotifs = notifications.filter((n) => n.type === "match");
   const likeNotifs  = notifications.filter((n) => n.type === "like");
   const feedNotifs  = notifications.filter((n) => n.type === "feed");
-  const otherNotifs = notifications.filter((n) => !["message", "match", "like", "feed"].includes(n.type));
+  const welcomeNotifs = notifications.filter((n) => n.type === "welcome");
+  const otherNotifs = notifications.filter((n) => !["message", "match", "like", "feed", "welcome"].includes(n.type));
   const isMale = gender === "male";
 
   if (loading) return null;
@@ -305,6 +306,21 @@ function NotificationsDrawer({ onClose }: { onClose: () => void }) {
                   <NotifIcon emoji="📸" />
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold">{n.title ?? "Nova publicação"}</p>
+                    <p className="text-xs text-muted-foreground">{n.content ?? ""}</p>
+                  </div>
+                  {!n.is_read && <span className="size-2 shrink-0 rounded-full bg-primary" />}
+                </div>
+              ))}
+            </Section>
+          )}
+
+          {welcomeNotifs.length > 0 && (
+            <Section title="Boas-vindas" icon={<Sparkles className="size-3.5 text-amber-400" />}>
+              {welcomeNotifs.map((n) => (
+                <div key={n.id} className="flex items-center gap-3 py-3">
+                  <NotifIcon emoji="🎉" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold">{n.title ?? "Bem-vindo"}</p>
                     <p className="text-xs text-muted-foreground">{n.content ?? ""}</p>
                   </div>
                   {!n.is_read && <span className="size-2 shrink-0 rounded-full bg-primary" />}

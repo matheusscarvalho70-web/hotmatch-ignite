@@ -228,6 +228,19 @@ function PostModal({ onClose, profileId, onPosted }: { onClose: () => void; prof
       if (!followers || followers.length === 0) return;
       const notifs = followers.map((f) => ({ user_id: f.follower_id, type: "feed" as const, title: `Nova publicação de ${richPost.author?.name ?? "Criadora"}`, content: "Veja o novo conteúdo exclusivo no feed", is_read: false, actor_id: profileId }));
       await supabase.from("notifications").insert(notifs).catch(() => {});
+
+      const pushTitle = `Nova publicação de ${richPost.author?.name ?? "Criadora"}`;
+      const pushBody = "Veja o novo conteúdo exclusivo no feed";
+      for (const f of followers) {
+        const pid = (f as Record<string, unknown>).profiles as Record<string, unknown> | null;
+        const playerId = pid?.onesignal_player_id as string | undefined;
+        if (!playerId) continue;
+        try {
+          await supabase.functions.invoke("notify-user", {
+            body: { player_id: playerId, title: pushTitle, message: pushBody },
+          });
+        } catch { /* push opcional */ }
+      }
     }).catch(() => {});
   }
 

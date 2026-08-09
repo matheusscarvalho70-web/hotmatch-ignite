@@ -538,7 +538,7 @@ function SignupFlow({ open, onOpenChange, gender }: {
         .from("notifications")
         .insert({
           user_id: profile.id,
-          type: "match",
+          type: "welcome",
           title: "Bem-vindo ao HotMatch! 🔥",
           content: isCreator
             ? "Seu perfil está sendo verificado. Em breve você poderá sacar seus ganhos!"
