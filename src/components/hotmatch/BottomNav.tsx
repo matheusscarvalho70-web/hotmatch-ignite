@@ -16,7 +16,6 @@ const items = [
 export function BottomNav() {
   const { profileId, unreadUsersCount, setUnreadUsersCount } = useAppState();
 
-  // Escuta em tempo real o número de usuários únicos que mandaram mensagens não lidas
   useEffect(() => {
     if (!profileId) {
       setUnreadUsersCount(0);
@@ -32,7 +31,6 @@ export function BottomNav() {
           .eq("is_read", false);
 
         if (!error && data) {
-          // O Set garante que se o mesmo usuário mandar 50 mensagens, conte apenas como 1 usuário
           const uniqueUsers = new Set(data.map((msg) => msg.sender_id)).size;
           setUnreadUsersCount(uniqueUsers);
         }
@@ -43,13 +41,12 @@ export function BottomNav() {
 
     fetchUnreadUsers();
 
-    // Canal em tempo real do Supabase para escutar novas mensagens ou leituras globalmente
     const channel = supabase
       .channel(`global:bottom_nav:unread:${profileId}`)
       .on(
         "postgres_changes",
         {
-          event: "*", // Escuta INSERT e UPDATE para atualizar em tempo real
+          event: "*",
           schema: "public",
           table: "chat_messages",
           filter: `receiver_id=eq.${profileId}`,
@@ -80,15 +77,15 @@ export function BottomNav() {
             >
               <span className="absolute inset-x-3 top-0 h-0.5 rounded-full bg-gradient-hot opacity-0 transition-opacity group-data-[status=active]:opacity-100" />
               
-              <div className="relative">
+              <div className="relative flex items-center justify-center">
                 <Icon
                   className="size-5 transition-transform group-data-[status=active]:scale-110 group-data-[status=active]:text-primary"
                   strokeWidth={2}
                 />
                 
-                {/* Bolinha vermelha com a quantidade de usuários únicos em tempo real */}
+                {/* BOLINHA VERMELHA EXCLUSIVA NO ÍCONE DE MENSAGENS */}
                 {isMessages && unreadUsersCount > 0 && (
-                  <span className="absolute -top-1.5 -right-2.5 grid min-w-5 h-5 px-1 place-items-center rounded-full bg-primary text-[10px] font-extrabold text-primary-foreground ring-2 ring-background animate-pulse">
+                  <span className="absolute -top-1 -right-3 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-primary-foreground ring-2 ring-background">
                     {unreadUsersCount > 9 ? "9+" : unreadUsersCount}
                   </span>
                 )}
