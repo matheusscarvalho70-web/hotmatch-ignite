@@ -8,53 +8,89 @@ export function useNotifications() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!profileId) {
-      setNotifications([]);
-      setLoading(false);
-      return;
-    }
-
     let cancelled = false;
     setLoading(true);
 
-    // BUSCA TODAS (Lidas e Não Lidas) ordenadas da mais recente para a mais antiga
-    supabase
-      .from("notifications")
-      .select("*")
-      .eq("user_id", profileId)
-      .order("created_at", { ascending: false })
-      .limit(40)
-      .then(({ data, error }) => {
+    async function fetchUserAndNotifications() {
+      // Garante o ID ativo do usuário por store ou direto da sessão do Supabase
+      let currentUserId = profileId;
+      
+      if (!currentUserId) {
+        const { data: { user } } = await supabase.auth.getUser();
+        currentUserId = user?.id || null;
+      }
+
+      if (!currentUserId) {
         if (!cancelled) {
-          if (!error && data) {
-            setNotifications(data as DbNotification[]);
-          }
+          setNotifications([]);
           setLoading(false);
         }
-      });
+        return;
+      }
 
-    // Tempo real para novas notificações chegarem na hora
-    const channel = supabase
-      .channel(`notif:${profileId}`)
-      .on("postgres_changes", {
-        event: "INSERT", schema: "public", table: "notifications",
-        filter: `user_id=eq.${profileId}`,
-      }, (payload) => {
-        if (!cancelled) setNotifications((p) => [payload.new as DbNotification, ...p]);
-      })
-      .subscribe();
+      // BUSCA TODAS (Lidas e Não Lidas) ordenadas da mais recente para a mais antiga
+      const { data, error } = await supabase
+        .from("notifications")
+        .select("*")
+        .eq("user_id", currentUserId)
+        .order("created_at", { ascending: false })
+        .limit(40);
+
+      if (!cancelled) {
+        if (!error && data) {
+          setNotifications(data as DbNotification[]);
+        }
+        setLoading(false);
+      }
+
+      // Tempo real para novas notificações chegarem na hora para o ID correto
+      const channel = supabase
+        .channel(`notif:${currentUserId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "notifications",
+            filter: `user_id=eq.${currentUserId}`,
+          },
+          (payload) => {
+            if (!cancelled) {
+              setNotifications((p) => [payload.new as DbNotification, ...p]);
+            }
+          }
+        )
+        .subscribe();
+
+      return () => {
+        cancelled = true;
+        supabase.removeChannel(channel);
+      };
+    }
+
+    const cleanupPromise = fetchUserAndNotifications();
 
     return () => {
       cancelled = true;
-      supabase.removeChannel(channel);
+      cleanupPromise.then((cleanup) => cleanup && cleanup());
     };
   }, [profileId]);
 
   async function markAllRead() {
-    if (!profileId) return;
+    let currentUserId = profileId;
+    if (!currentUserId) {
+      const { data: { user } } = await supabase.auth.getUser();
+      currentUserId = user?.id || null;
+    }
+
+    if (!currentUserId) return;
+
     // Marca no banco como lida apenas para tirar a bolinha vermelha do sininho
-    await supabase.from("notifications").update({ is_read: true })
-      .eq("user_id", profileId).eq("is_read", false);
+    await supabase
+      .from("notifications")
+      .update({ is_read: true })
+      .eq("user_id", currentUserId)
+      .eq("is_read", false);
     
     // Atualiza o estado local mantendo elas na tela (agora como lidas)
     setNotifications((p) => p.map((n) => ({ ...n, is_read: true })));
