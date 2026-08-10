@@ -205,17 +205,6 @@ function NotificationsDrawer({ onClose }: { onClose: () => void }) {
   const { gender } = useAppState();
 
   const safeNotifs = Array.isArray(notifications) ? notifications : [];
-  
-  // Filtros flexíveis para evitar que qualquer variação de tipo esconda a notificação
-  const msgNotifs     = safeNotifs.filter((n) => n.type?.toLowerCase() === "message" || !n.type);
-  const matchNotifs   = safeNotifs.filter((n) => n.type?.toLowerCase() === "match");
-  const likeNotifs    = safeNotifs.filter((n) => n.type?.toLowerCase() === "like");
-  const feedNotifs    = safeNotifs.filter((n) => n.type?.toLowerCase() === "feed");
-  const welcomeNotifs = safeNotifs.filter((n) => n.type?.toLowerCase() === "welcome");
-  const otherNotifs   = safeNotifs.filter((n) => {
-    const t = n.type?.toLowerCase();
-    return t && !["message", "match", "like", "feed", "welcome"].includes(t);
-  });
   const isMale = gender === "male";
 
   if (loading) return null;
@@ -228,154 +217,94 @@ function NotificationsDrawer({ onClose }: { onClose: () => void }) {
         style={{ maxHeight: "80dvh", paddingTop: "calc(env(safe-area-inset-top) + 4rem)" }}
       >
         <div className="space-y-4 p-4 pb-6">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between border-b border-border pb-3">
             <h3 className="text-base font-extrabold">Notificações</h3>
             <button onClick={onClose} className="grid size-7 place-items-center rounded-full bg-surface-2">
               <X className="size-4 text-muted-foreground" />
             </button>
           </div>
 
-          {msgNotifs.length > 0 && (
-            <Section title="Novas mensagens" icon={<MessageCircle className="size-3.5 text-primary" />}>
-              {msgNotifs.map((n) => (
-                <button
-                  key={n.id}
-                  onClick={() => { onClose(); navigate({ to: "/mensagens" }); }}
-                  className="flex w-full items-center gap-3 py-3 text-left"
-                >
-                  <NotifIcon emoji="💬" />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold">{n.title ?? "Mensagem"}</p>
-                    <p className="truncate text-xs text-muted-foreground">{n.content ?? ""}</p>
-                  </div>
-                  {!n.is_read && <span className="size-2 shrink-0 rounded-full bg-primary" />}
-                </button>
-              ))}
-            </Section>
-          )}
+          {safeNotifs.length > 0 ? (
+            <div className="divide-y divide-border/50">
+              {safeNotifs.map((n) => {
+                const type = n.type?.toLowerCase();
 
-          {matchNotifs.length > 0 && (
-            <Section title="Novos matches" icon={<Heart className="size-3.5 text-primary" />}>
-              {matchNotifs.map((n) => (
-                <div key={n.id} className="flex items-center gap-3 py-3">
-                  <NotifIcon emoji="🔥" />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold">{n.title ?? "Deu Match!"}</p>
-                    <p className="text-xs text-muted-foreground">{n.content ?? ""}</p>
-                  </div>
-                  {!n.is_read && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">Novo</span>}
-                </div>
-              ))}
-            </Section>
-          )}
+                // Caso especial de curtida bloqueada para homens
+                if (type === "like" && isMale) {
+                  return <LockedLikeRow key={n.id} n={n} />;
+                }
 
-          {likeNotifs.length > 0 && (
-            <Section title="Curtidas" icon={<Sparkles className="size-3.5 text-gold" />}>
-              {likeNotifs.map((n) =>
-                isMale
-                  ? <LockedLikeRow key={n.id} n={n} />
-                  : (
-                    <div key={n.id} className="flex items-center gap-3 py-3">
-                      <NotifIcon emoji="❤️" />
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-semibold">{n.title ?? "Nova curtida"}</p>
-                        <p className="text-xs text-muted-foreground">{n.content ?? ""}</p>
-                      </div>
+                // Define a ação de clique para levar ao chat ou secção correta
+                let clickAction = () => {
+                  onClose();
+                  navigate({ to: "/mensagens" });
+                };
+
+                if (type === "message" || type === "msg" || type === "match") {
+                  const targetUserId = n.actor_id || n.sender_id;
+                  if (targetUserId) {
+                    clickAction = () => {
+                      onClose();
+                      navigate({ to: "/mensagens/$userId", params: { userId: targetUserId } });
+                    };
+                  }
+                }
+
+                // Emoji padrão caso não tenha foto de perfil
+                const defaultEmoji = type === "match" ? "🔥" : type === "welcome" ? "🎉" : type === "feed" ? "📸" : "💬";
+
+                return (
+                  <div
+                    key={n.id}
+                    onClick={clickAction}
+                    className="flex items-center gap-3.5 py-3.5 transition-colors hover:bg-surface-2/40 cursor-pointer"
+                  >
+                    <div className="relative shrink-0">
+                      {n.actor_avatar_url ? (
+                        <img
+                          src={n.actor_avatar_url}
+                          alt=""
+                          className="size-11 rounded-full object-cover border border-border"
+                        />
+                      ) : (
+                        <span className="grid size-11 place-items-center rounded-full bg-surface-2 text-xl">
+                          {defaultEmoji}
+                        </span>
+                      )}
+                      {!n.is_read && (
+                        <span className="absolute -top-0.5 -right-0.5 size-3 rounded-full bg-primary ring-2 ring-background" />
+                      )}
                     </div>
-                  )
-              )}
-            </Section>
-          )}
 
-          {feedNotifs.length > 0 && (
-            <Section title="Feed" icon={<Zap className="size-3.5 text-amber-400" />}>
-              {feedNotifs.map((n) => (
-                <div key={n.id} className="flex items-center gap-3 py-3">
-                  <NotifIcon emoji="📸" />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold">{n.title ?? "Nova publicação"}</p>
-                    <p className="text-xs text-muted-foreground">{n.content ?? ""}</p>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="truncate text-sm font-bold text-foreground">
+                          {n.title ?? "Notificação"}
+                        </p>
+                        <span className="text-[10px] text-muted-foreground shrink-0">
+                          {new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                      <p className="truncate text-xs text-muted-foreground mt-0.5">
+                        {n.content ?? ""}
+                      </p>
+                    </div>
                   </div>
-                  {!n.is_read && <span className="size-2 shrink-0 rounded-full bg-primary" />}
-                </div>
-              ))}
-            </Section>
-          )}
-
-          {welcomeNotifs.length > 0 && (
-            <Section title="Boas-vindas" icon={<Sparkles className="size-3.5 text-amber-400" />}>
-              {welcomeNotifs.map((n) => (
-                <div key={n.id} className="flex items-center gap-3 py-3">
-                  <NotifIcon emoji="🎉" />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold">{n.title ?? "Bem-vindo"}</p>
-                    <p className="text-xs text-muted-foreground">{n.content ?? ""}</p>
-                  </div>
-                  {!n.is_read && <span className="size-2 shrink-0 rounded-full bg-primary" />}
-                </div>
-              ))}
-            </Section>
-          )}
-
-          {otherNotifs.length > 0 && (
-            <Section title="Atividade" icon={<Bell className="size-3.5 text-muted-foreground" />}>
-              {otherNotifs.map((n) => (
-                <div key={n.id} className="flex items-center gap-3 py-3">
-                  <NotifIcon emoji="🔔" />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold">{n.title ?? "Atividade"}</p>
-                    <p className="text-xs text-muted-foreground">{n.content ?? ""}</p>
-                  </div>
-                  {!n.is_read && <span className="size-2 shrink-0 rounded-full bg-primary" />}
-                </div>
-              ))}
-            </Section>
-          )}
-
-          {safeNotifs.length === 0 && (
+                );
+              })}
+            </div>
+          ) : (
             <div className="flex flex-col items-center gap-3 py-12 text-center">
               <span className="grid size-14 place-items-center rounded-full bg-surface-2">
                 <Bell className="size-6 text-muted-foreground" />
               </span>
               <p className="text-sm font-semibold">Nenhuma notificação por enquanto</p>
-              <p className="text-xs text-muted-foreground">As notificações de curtidas, matches e mensagens aparecerão aqui.</p>
+              <p className="text-xs text-muted-foreground">Suas curtidas, matches e mensagens aparecerão aqui.</p>
             </div>
           )}
         </div>
       </div>
     </>
-  );
-}
-
-function NotifIcon({ emoji }: { emoji: string }) {
-  return (
-    <span className="grid size-10 shrink-0 place-items-center rounded-full bg-surface-2 text-xl">
-      {emoji}
-    </span>
-  );
-}
-
-function Section({
-  title,
-  icon,
-  children,
-}: {
-  title: string;
-  icon: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="overflow-hidden rounded-2xl border border-border bg-surface">
-      <div className="flex items-center gap-1.5 border-b border-border px-4 py-2.5">
-        {icon}
-        <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
-          {title}
-        </p>
-      </div>
-      <div className="divide-y divide-border px-4">
-        {children}
-      </div>
-    </div>
   );
 }
 
@@ -477,4 +406,5 @@ export function TopBar() {
       )}
     </header>
   );
-}
+        }
+                          
