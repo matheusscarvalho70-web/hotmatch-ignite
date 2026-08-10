@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { supabase } from "@/lib/supabase";
 
 export type Role = "buyer" | "creator";
 export type Gender = "male" | "female";
@@ -17,7 +18,7 @@ export type AppState = {
   vip: boolean;
   followed: string[];
   galleryUnlocks: string[];
-  unreadUsersCount: number; // Novo: Quantidade de usuários únicos com mensagens não lidas
+  unreadUsersCount: number;
 };
 
 const STORAGE_KEY = "hm_session_v3";
@@ -76,7 +77,7 @@ let state: AppState = {
   unlocked: [],
   followed: [],
   galleryUnlocks: [],
-  unreadUsersCount: 0,
+  unreadUsersCount: 0, // GARANTIDO AQUI
 };
 
 const listeners = new Set<() => void>();
@@ -91,6 +92,34 @@ function getSnapshot() { return state; }
 
 export function useAppState(): AppState {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+}
+
+export async function refreshUnreadUsersCount() {
+  const currentId = state.profileId;
+  if (!currentId) {
+    if (state.unreadUsersCount !== 0) {
+      state = { ...state, unreadUsersCount: 0 };
+      emit();
+    }
+    return;
+  }
+  try {
+    const { data, error } = await supabase
+      .from("chat_messages")
+      .select("sender_id")
+      .eq("receiver_id", currentId)
+      .eq("is_read", false);
+
+    if (!error && data) {
+      const uniqueUsers = new Set(data.map((msg) => msg.sender_id)).size;
+      if (state.unreadUsersCount !== uniqueUsers) {
+        state = { ...state, unreadUsersCount: uniqueUsers };
+        emit();
+      }
+    }
+  } catch (err) {
+    console.warn("Erro ao buscar contagem global:", err);
+  }
 }
 
 export const actions = {
@@ -120,6 +149,7 @@ export const actions = {
     };
     persist(state);
     emit();
+    refreshUnreadUsersCount();
   },
   setGender(gender: Gender) {
     state = { ...state, gender, role: gender === "female" ? "creator" : "buyer" };
