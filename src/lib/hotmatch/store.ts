@@ -17,6 +17,7 @@ export type AppState = {
   vip: boolean;
   followed: string[];
   galleryUnlocks: string[];
+  unreadUsersCount: number; // Novo: Quantidade de usuários únicos com mensagens não lidas
 };
 
 const STORAGE_KEY = "hm_session_v3";
@@ -64,6 +65,7 @@ const defaultState: AppState = {
   vip: false,
   followed: [],
   galleryUnlocks: [],
+  unreadUsersCount: 0,
 };
 
 const persisted = loadFromStorage();
@@ -74,6 +76,7 @@ let state: AppState = {
   unlocked: [],
   followed: [],
   galleryUnlocks: [],
+  unreadUsersCount: 0,
 };
 
 const listeners = new Set<() => void>();
@@ -182,8 +185,13 @@ export const actions = {
     state = { ...state, galleryUnlocks: ids };
     emit();
   },
+  setUnreadUsersCount(count: number) {
+    if (state.unreadUsersCount === count) return;
+    state = { ...state, unreadUsersCount: count };
+    emit();
+  },
   signOut() {
-    state = { ...defaultState, unlocked: [], followed: [], galleryUnlocks: [] };
+    state = { ...defaultState, unlocked: [], followed: [], galleryUnlocks: [], unreadUsersCount: 0 };
     try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
     emit();
   },
