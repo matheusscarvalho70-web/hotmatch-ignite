@@ -30,7 +30,7 @@ export const Route = createFileRoute("/mensagens/$chatId")({
 function ChatRoute() {
   const { chatId } = useParams({ from: "/mensagens/$chatId" });
   const navigate = useNavigate();
-  const { profileId, gender, coins } = useAppState();
+  const { profileId, coins } = useAppState();
   const myId = profileId ?? "";
   const partnerId = chatId;
 
@@ -38,75 +38,6 @@ function ChatRoute() {
   const dbPartner = dbProfiles.find((p) => p.id === partnerId);
   const partnerName = dbPartner?.name ?? "Conversa";
   const partnerAvatar = dbPartner?.avatar_url ?? null;
-
-  const [hasMutualMatch, setHasMutualMatch] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    if (!myId || !partnerId) return;
-
-    async function markAsRead() {
-      try {
-        await supabase
-          .from("chat_messages")
-          .update({ is_read: true })
-          .eq("sender_id", partnerId)
-          .eq("receiver_id", myId)
-          .eq("is_read", false);
-      } catch (err) {
-        console.warn("Erro ao marcar mensagens como lidas:", err);
-      }
-    }
-
-    markAsRead();
-  }, [myId, partnerId]);
-
-  useEffect(() => {
-    if (!myId || !partnerId) return;
-    if (dbPartner === undefined) return;
-    if (dbPartner?.is_demo) {
-      setHasMutualMatch(true);
-      return;
-    }
-    let cancelled = false;
-    const [u1, u2] = [myId, partnerId].sort();
-    supabase
-      .from("mutual_matches")
-      .select("id")
-      .eq("user_1", u1)
-      .eq("user_2", u2)
-      .maybeSingle()
-      .then(async ({ data }) => {
-        if (cancelled) return;
-        if (data) {
-          setHasMutualMatch(true);
-        } else {
-          const { data: myLike } = await supabase
-            .from("matches")
-            .select("id")
-            .eq("user_id", myId)
-            .eq("target_user_id", partnerId)
-            .eq("action", "like")
-            .maybeSingle();
-          if (cancelled) return;
-          if (myLike) {
-            const { data: partnerLike } = await supabase
-              .from("matches")
-              .select("id")
-              .eq("user_id", partnerId)
-              .eq("target_user_id", myId)
-              .eq("action", "like")
-              .maybeSingle();
-            if (cancelled) return;
-            setHasMutualMatch(!!partnerLike);
-          } else {
-            setHasMutualMatch(false);
-          }
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [myId, partnerId, dbPartner]);
 
   const { messages, sendMessage, sendAudioMessage, sendGiftMessage, sendMediaMessage } = useChat({
     partnerId,
@@ -127,18 +58,11 @@ function ChatRoute() {
   const audioChunksRef = useRef<Blob[]>([]);
   const audioSecondsRef = useRef(0);
 
-  const [callState, setCallState] = useState<"idle" | "voice" | "video">("idle");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const callStreamRef = useRef<MediaStream | null>(null);
-  const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
   useEffect(() => {
-    scrollToBottom();
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
   const handleSend = () => {
@@ -192,31 +116,23 @@ function ChatRoute() {
   const startAudioRecord = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mimeType = MediaRecorder.isTypeSupported("audio/webm")
-        ? "audio/webm"
-        : MediaRecorder.isTypeSupported("audio/mp4")
-          ? "audio/mp4"
-          : "";
-      const recorder = mimeType
-        ? new MediaRecorder(stream, { mimeType })
-        : new MediaRecorder(stream);
-      const ext = mimeType.includes("mp4") ? "mp4" : "webm";
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/mp4";
+      const recorder = new MediaRecorder(stream, { mimeType });
       audioChunksRef.current = [];
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) audioChunksRef.current.push(e.data);
       };
       recorder.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
-        const blobType = mimeType || "audio/webm";
-        const blob = new Blob(audioChunksRef.current, { type: blobType });
+        const blob = new Blob(audioChunksRef.current, { type: mimeType });
         const seconds = audioSecondsRef.current;
         if (blob.size > 0 && seconds > 0) {
           toast.loading("Enviando áudio...", { id: "audio-upload" });
           try {
-            const fileName = `audio_${Date.now()}.${ext}`;
+            const fileName = `audio_${Date.now()}.${mimeType.includes("mp4") ? "mp4" : "webm"}`;
             const { error: uploadError } = await supabase.storage
               .from("chat-media")
-              .upload(`chat-audio/${fileName}`, blob, { contentType: blobType });
+              .upload(`chat-audio/${fileName}`, blob, { contentType: mimeType });
             if (uploadError) throw uploadError;
             const { data: urlData } = supabase.storage
               .from("chat-media")
@@ -253,45 +169,6 @@ function ChatRoute() {
     setAudioTimer(0);
   };
 
-  const handleBlock = () => {
-    setShowMenu(false);
-    toast.success(`${partnerName} foi bloqueado.`);
-  };
-
-  const handleReportSubmit = async (subject: string, description: string) => {
-    if (!subject.trim()) {
-      toast.error("Por favor, preencha o assunto.");
-      return;
-    }
-    try {
-      const { error } = await supabase.from("reports").insert({
-        reporter_id: myId || null,
-        reported_user_id: partnerId || null,
-        subject: subject.trim(),
-        description: description.trim() || null,
-      });
-      if (error) throw error;
-      toast.success("Denúncia enviada.");
-      setShowReport(false);
-    } catch (err) {
-      toast.error("Erro ao enviar denúncia.");
-      console.error(err);
-    }
-  };
-
-  const endCall = () => {
-    callStreamRef.current?.getTracks().forEach((t) => t.stop());
-    callStreamRef.current = null;
-    setCallState("idle");
-  };
-
-  useEffect(() => {
-    return () => {
-      if (audioIntervalRef.current) clearInterval(audioIntervalRef.current);
-      callStreamRef.current?.getTracks().forEach((t) => t.stop());
-    };
-  }, []);
-
   return (
     <div className="flex flex-col h-[100dvh] bg-[#0B0B0E] text-white">
       <div className="flex items-center justify-between px-4 py-3 bg-[#121218]/80 backdrop-blur-md border-b border-white/10 sticky top-0 z-20">
@@ -312,9 +189,7 @@ function ChatRoute() {
               <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-[#0B0B0E]" />
             </div>
             <div className="text-left">
-              <h2 className="font-semibold text-sm leading-tight text-white flex items-center gap-1">
-                {partnerName}
-              </h2>
+              <h2 className="font-semibold text-sm leading-tight text-white">{partnerName}</h2>
               <span className="text-[10px] text-green-400 font-medium">Online agora</span>
             </div>
           </button>
@@ -324,42 +199,29 @@ function ChatRoute() {
           <button onClick={() => setShowGiftModal(true)} className="p-2 hover:bg-white/5 rounded-full transition">
             <Gift className="w-5 h-5 text-[#FFD700]" />
           </button>
-          <div className="relative">
-            <button onClick={() => setShowMenu((v) => !v)} className="p-2 hover:bg-white/5 rounded-full transition">
-              <MoreVertical className="w-5 h-5" />
-            </button>
-            {showMenu && (
-              <>
-                <div className="fixed inset-0 z-30" onClick={() => setShowMenu(false)} />
-                <div className="absolute right-0 top-full mt-1 z-40 w-44 overflow-hidden rounded-2xl border border-white/10 bg-[#1C1C24] shadow-2xl">
-                  <button
-                    onClick={handleBlock}
-                    className="flex w-full items-center gap-3 px-4 py-3 text-sm font-medium text-white hover:bg-white/5 transition"
-                  >
-                    <Ban className="w-4 h-4 text-red-400" /> Bloquear
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowMenu(false);
-                      setShowReport(true);
-                    }}
-                    className="flex w-full items-center gap-3 px-4 py-3 text-sm font-medium text-white hover:bg-white/5 transition border-t border-white/5"
-                  >
-                    <Flag className="w-4 h-4 text-orange-400" /> Denunciar
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
+          <button onClick={() => setShowMenu((v) => !v)} className="p-2 hover:bg-white/5 rounded-full transition">
+            <MoreVertical className="w-5 h-5" />
+          </button>
+          {showMenu && (
+            <div className="absolute right-4 top-14 z-40 w-44 overflow-hidden rounded-2xl border border-white/10 bg-[#1C1C24] shadow-2xl">
+              <button
+                onClick={() => { setShowMenu(false); toast.success("Usuário bloqueado."); }}
+                className="flex w-full items-center gap-3 px-4 py-3 text-sm font-medium text-white hover:bg-white/5"
+              >
+                <Ban className="w-4 h-4 text-red-400" /> Bloquear
+              </button>
+              <button
+                onClick={() => { setShowMenu(false); setShowReport(true); }}
+                className="flex w-full items-center gap-3 px-4 py-3 text-sm font-medium text-white hover:bg-white/5 border-t border-white/5"
+              >
+                <Flag className="w-4 h-4 text-orange-400" /> Denunciar
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        <div className="text-center my-2">
-          <span className="text-[10px] bg-white/5 text-white/50 px-3 py-1 rounded-full uppercase tracking-wider border border-white/5">
-            Conexão segura HotMatch
-          </span>
-        </div>
         {messages.map((msg) => (
           <MessageBubble key={msg.id} msg={msg} onImageClick={setLightboxImage} />
         ))}
@@ -369,32 +231,18 @@ function ChatRoute() {
       <div className="p-3 bg-[#121218] border-t border-white/10 sticky bottom-0 z-20">
         {isRecording ? (
           <div className="flex items-center justify-between bg-[#1C1C24] px-4 py-3 rounded-full border border-red-500/50">
-            <div className="flex items-center gap-3">
-              <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />
-              <span className="text-sm font-medium text-red-400">
-                Gravando áudio... {Math.floor(audioTimer / 60)}:{audioTimer % 60 < 10 ? `0${audioTimer % 60}` : audioTimer % 60}
-              </span>
-            </div>
-            <button
-              onClick={stopAudioRecord}
-              className="bg-gradient-to-r from-[#FFD700] to-[#FFA500] text-black px-4 py-1.5 rounded-full text-xs font-bold"
-            >
+            <span className="text-sm font-medium text-red-400">Gravando áudio... {audioTimer}s</span>
+            <button onClick={stopAudioRecord} className="bg-[#FFD700] text-black px-4 py-1.5 rounded-full text-xs font-bold">
               Enviar
             </button>
           </div>
         ) : (
           <div className="flex items-center gap-2">
-            <button onClick={() => fileInputRef.current?.click()} className="p-2.5 text-[#FFD700] hover:bg-white/5 rounded-full transition">
+            <button onClick={() => fileInputRef.current?.click()} className="p-2.5 text-[#FFD700] hover:bg-white/5 rounded-full">
               <ImagePlus className="w-5 h-5" />
             </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*,video/*"
-              onChange={handleMediaSelect}
-              className="hidden"
-            />
-            <button onClick={startAudioRecord} className="p-2.5 text-white/70 hover:text-white hover:bg-white/5 rounded-full transition">
+            <input ref={fileInputRef} type="file" accept="image/*,video/*" onChange={handleMediaSelect} className="hidden" />
+            <button onClick={startAudioRecord} className="p-2.5 text-white/70 hover:text-white rounded-full">
               <Mic className="w-5 h-5" />
             </button>
             <input
@@ -405,10 +253,7 @@ function ChatRoute() {
               placeholder="Digite sua mensagem..."
               className="flex-1 bg-[#1C1C24] text-white placeholder-white/40 text-sm px-4 py-2.5 rounded-full border border-white/10 focus:outline-none focus:border-[#FFD700]"
             />
-            <button
-              onClick={handleSend}
-              className="p-2.5 bg-gradient-to-r from-[#FFD700] to-[#FFA500] text-black rounded-full hover:opacity-90 transition shadow-md shadow-[#FFD700]/20"
-            >
+            <button onClick={handleSend} className="p-2.5 bg-[#FFD700] text-black rounded-full">
               <Send className="w-5 h-5" />
             </button>
           </div>
@@ -416,27 +261,21 @@ function ChatRoute() {
       </div>
 
       {showGiftModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-end justify-center" onClick={() => setShowGiftModal(false)}>
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-end justify-center" onClick={() => setShowGiftModal(false)}>
           <div className="bg-[#121218] w-full max-w-lg rounded-t-3xl p-6 border-t border-white/10 space-y-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-bold flex items-center gap-2 text-[#FFD700]">
-                <Gift className="w-5 h-5" /> Enviar Presente
-              </h3>
-              <button onClick={() => setShowGiftModal(false)} className="text-white/50 hover:text-white">
-                <X className="w-6 h-6" />
-              </button>
+              <h3 className="text-lg font-bold text-[#FFD700]">Enviar Presente</h3>
+              <button onClick={() => setShowGiftModal(false)} className="text-white/50"><X className="w-6 h-6" /></button>
             </div>
             <div className="grid grid-cols-3 gap-3">
               {gifts.map((g) => (
                 <button
                   key={g.id}
                   onClick={() => handleSendGift(g)}
-                  className="group relative bg-[#1C1C24] hover:border-[#FFD700] border border-white/5 p-4 rounded-2xl flex flex-col items-center gap-2 transition hover:scale-105"
+                  className="bg-[#1C1C24] border border-white/5 p-4 rounded-2xl flex flex-col items-center gap-2"
                 >
-                  <span className="grid size-14 place-items-center rounded-full text-3xl" style={{ backgroundColor: `${g.color}22` }}>
-                    {g.emoji}
-                  </span>
-                  <span className="text-xs font-semibold text-white">{g.name}</span>
+                  <span className="text-3xl">{g.emoji}</span>
+                  <span className="text-xs font-semibold">{g.name}</span>
                   <span className="text-[10px] text-[#FFD700] font-bold flex items-center gap-1">
                     <Coins className="w-3 h-3" /> {g.price}
                   </span>
@@ -447,23 +286,7 @@ function ChatRoute() {
         </div>
       )}
 
-      {showReport && (
-        <ReportModal partnerName={partnerName} onClose={() => setShowReport(false)} onSubmit={handleReportSubmit} />
-      )}
-
-      {callState !== "idle" && (
-        <CallOverlay
-          type={callState}
-          partnerName={partnerName}
-          partnerAvatar={partnerAvatar}
-          onEnd={endCall}
-          localVideoRef={localVideoRef}
-        />
-      )}
-
-      {lightboxImage && (
-        <Lightbox src={lightboxImage} onClose={() => setLightboxImage(null)} />
-      )}
+      {lightboxImage && <Lightbox src={lightboxImage} onClose={() => setLightboxImage(null)} />}
     </div>
   );
 }
@@ -490,14 +313,9 @@ function MessageBubble({ msg, onImageClick }: { msg: LocalMessage; onImageClick?
     const el = audioRef.current;
     if (!el) return;
     const onTimeUpdate = () => {
-      if (el.duration > 0) {
-        setProgress((el.currentTime / el.duration) * 100);
-      }
+      if (el.duration > 0) setProgress((el.currentTime / el.duration) * 100);
     };
-    const onEnded = () => {
-      setPlaying(false);
-      setProgress(0);
-    };
+    const onEnded = () => { setPlaying(false); setProgress(0); };
     el.addEventListener("timeupdate", onTimeUpdate);
     el.addEventListener("ended", onEnded);
     return () => {
@@ -508,25 +326,34 @@ function MessageBubble({ msg, onImageClick }: { msg: LocalMessage; onImageClick?
 
   return (
     <div className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
-      <div
-        className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-sm ${
-          isMe
-            ? "bg-gradient-to-r from-[#FFD700] to-[#FFA500] text-black font-medium"
-            : "bg-[#1C1C24] text-white border border-white/5"
-        }`}
-      >
+      <div className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-sm ${isMe ? "bg-[#FFD700] text-black font-medium" : "bg-[#1C1C24] text-white border border-white/5"}`}>
         {msg.kind === "audio" && msg.media ? (
           <div className="flex items-center gap-3 min-w-[160px]">
-            <button
-              onClick={togglePlay}
-              className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${
-                isMe ? "bg-black text-[#FFD700]" : "bg-[#FFD700] text-black"
-              }`}
-            >
+            <button onClick={togglePlay} className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${isMe ? "bg-black text-[#FFD700]" : "bg-[#FFD700] text-black"}`}>
               {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
             </button>
             <div className="flex-1 space-y-1">
               <div className="h-1.5 w-full bg-white/20 rounded-full overflow-hidden">
                 <div className={`h-full ${isMe ? "bg-black" : "bg-[#FFD700]"}`} style={{ width: `${progress}%` }} />
               </div>
-              <span className="text-[10px] opacity-70 block text-right">{msg.duration ? `${Math.floor(msg.dura
+            </div>
+            <audio ref={audioRef} src={msg.media} preload="metadata" />
+          </div>
+        ) : msg.kind === "foto" && msg.media ? (
+          <div className="space-y-1 cursor-pointer" onClick={() => onImageClick?.(msg.media!)}>
+            <img src={msg.media} alt="Foto" className="rounded-xl max-w-xs object-cover max-h-60" />
+            {msg.text && <p className="pt-1">{msg.text}</p>}
+          </div>
+        ) : msg.kind === "gift" ? (
+          <div className="text-center space-y-1 py-1">
+            <span className="text-3xl block">{msg.media || "🎁"}</span>
+            <p className="font-bold text-xs">{msg.text}</p>
+          </div>
+        ) : (
+          <p className="whitespace-pre-wrap break-words">{msg.text}</p>
+        )}
+      </div>
+    </div>
+  );
+            }
+        
