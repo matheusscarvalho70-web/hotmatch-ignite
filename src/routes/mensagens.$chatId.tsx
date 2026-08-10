@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useParams, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate, useParams } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -9,9 +9,9 @@ import {
   ImagePlus,
   Mic,
   MoreVertical,
+  Pause,
   PhoneOff,
   Play,
-  Pause,
   Send,
   X,
 } from "lucide-react";
@@ -24,20 +24,13 @@ import { supabase } from "@/lib/supabase";
 import { Lightbox } from "@/components/hotmatch/Lightbox";
 
 export const Route = createFileRoute("/mensagens/$chatId")({
-  head: () => ({
-    meta: [
-      { title: "Conversa — HotMatch" },
-      { name: "description", content: "Chat em tempo real, áudios, presentes e chamadas." },
-    ],
-  }),
-  component: Chat,
+  component: ChatRoute,
 });
 
-function Chat() {
+function ChatRoute() {
   const { chatId } = useParams({ from: "/mensagens/$chatId" });
   const navigate = useNavigate();
   const { profileId, gender, coins } = useAppState();
-  const isCreator = gender === "female";
   const myId = profileId ?? "";
   const partnerId = chatId;
 
@@ -48,7 +41,6 @@ function Chat() {
 
   const [hasMutualMatch, setHasMutualMatch] = useState<boolean | null>(null);
 
-  // Marcar mensagens como lidas assim que entra no chat com este usuário
   useEffect(() => {
     if (!myId || !partnerId) return;
 
@@ -534,4 +526,7 @@ function MessageBubble({ msg, onImageClick }: { msg: LocalMessage; onImageClick?
               {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
             </button>
             <div className="flex-1 space-y-1">
-              <div className="h-1.5 w-full bg-white/20
+              <div className="h-1.5 w-full bg-white/20 rounded-full overflow-hidden">
+                <div className={`h-full ${isMe ? "bg-black" : "bg-[#FFD700]"}`} style={{ width: `${progress}%` }} />
+              </div>
+              <span className="text-[10px] opacity-70 block text-right">{msg.duration ? `${Math.floor(msg.dura
