@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Bell, CheckCheck, Coins, Crown, Heart, MessageCircle, Sparkles, X, Zap } from "lucide-react";
+import { Bell, CheckCheck, Coins, Crown, X, Zap } from "lucide-react";
 import { Component, useEffect, useState, type ReactNode } from "react";
 import { HotMark } from "@/components/hotmatch/HotMark";
 import { useNotifications } from "@/hooks/use-notifications";
@@ -206,11 +206,10 @@ function NotificationsDrawer({ onClose }: { onClose: () => void }) {
 
   const safeNotifs = Array.isArray(notifications) ? notifications : [];
   
-  // FILTRO INTELIGENTE: Removemos as mensagens de chat daqui para o sino ficar limpo,
-  // mantendo apenas curtidas, matches, boas-vindas e feed.
+  // FILTRO RIGOROSO: Remove completamente qualquer notificação de mensagem do sininho
   const generalNotifs = safeNotifs.filter((n) => {
     const type = n.type?.toLowerCase();
-    return type !== "message" && type !== "msg";
+    return type !== "message" && type !== "msg" && type !== "chat";
   });
 
   const isMale = gender === "male";
@@ -357,11 +356,18 @@ class NotifErrorBoundary extends Component<
 
 export function NotificationBell() {
   const [open, setOpen] = useState(false);
-  const { unreadCount, markAllRead } = useNotifications();
+  const { notifications, markAllRead } = useNotifications();
+
+  // FILTRA APENAS AS NÃO LIDAS QUE NÃO SEJAM MENSAGENS DE CHAT
+  const safeNotifs = Array.isArray(notifications) ? notifications : [];
+  const generalUnreadCount = safeNotifs.filter((n) => {
+    const type = n.type?.toLowerCase();
+    return !n.is_read && type !== "message" && type !== "msg" && type !== "chat";
+  }).length;
 
   function handleOpen() {
     setOpen((v) => !v);
-    if (!open && unreadCount > 0) markAllRead();
+    if (!open && generalUnreadCount > 0) markAllRead();
   }
 
   return (
@@ -371,9 +377,9 @@ export function NotificationBell() {
         className="tap-scale relative grid size-9 place-items-center rounded-full border border-border bg-surface-2"
       >
         <Bell className="size-4 text-foreground" />
-        {unreadCount > 0 && (
+        {generalUnreadCount > 0 && (
           <span className="absolute right-1 top-1 grid size-4 place-items-center rounded-full bg-primary text-[9px] font-extrabold text-primary-foreground ring-2 ring-background">
-            {unreadCount > 9 ? "9+" : unreadCount}
+            {generalUnreadCount > 9 ? "9+" : generalUnreadCount}
           </span>
         )}
       </button>
@@ -411,5 +417,5 @@ export function TopBar() {
       )}
     </header>
   );
-                }
-              
+      }
+          
