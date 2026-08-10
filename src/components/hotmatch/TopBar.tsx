@@ -205,6 +205,14 @@ function NotificationsDrawer({ onClose }: { onClose: () => void }) {
   const { gender } = useAppState();
 
   const safeNotifs = Array.isArray(notifications) ? notifications : [];
+  
+  // FILTRO INTELIGENTE: Removemos as mensagens de chat daqui para o sino ficar limpo,
+  // mantendo apenas curtidas, matches, boas-vindas e feed.
+  const generalNotifs = safeNotifs.filter((n) => {
+    const type = n.type?.toLowerCase();
+    return type !== "message" && type !== "msg";
+  });
+
   const isMale = gender === "male";
 
   if (loading) return null;
@@ -224,23 +232,21 @@ function NotificationsDrawer({ onClose }: { onClose: () => void }) {
             </button>
           </div>
 
-          {safeNotifs.length > 0 ? (
+          {generalNotifs.length > 0 ? (
             <div className="divide-y divide-border/50">
-              {safeNotifs.map((n) => {
+              {generalNotifs.map((n) => {
                 const type = n.type?.toLowerCase();
 
-                // Caso especial de curtida bloqueada para homens
                 if (type === "like" && isMale) {
                   return <LockedLikeRow key={n.id} n={n} />;
                 }
 
-                // Define a ação de clique para levar ao chat ou secção correta
                 let clickAction = () => {
                   onClose();
                   navigate({ to: "/mensagens" });
                 };
 
-                if (type === "message" || type === "msg" || type === "match") {
+                if (type === "match") {
                   const targetUserId = n.actor_id || n.sender_id;
                   if (targetUserId) {
                     clickAction = () => {
@@ -250,8 +256,7 @@ function NotificationsDrawer({ onClose }: { onClose: () => void }) {
                   }
                 }
 
-                // Emoji padrão caso não tenha foto de perfil
-                const defaultEmoji = type === "match" ? "🔥" : type === "welcome" ? "🎉" : type === "feed" ? "📸" : "💬";
+                const defaultEmoji = type === "match" ? "🔥" : type === "welcome" ? "🎉" : type === "feed" ? "📸" : "🔔";
 
                 return (
                   <div
@@ -299,7 +304,7 @@ function NotificationsDrawer({ onClose }: { onClose: () => void }) {
                 <Bell className="size-6 text-muted-foreground" />
               </span>
               <p className="text-sm font-semibold">Nenhuma notificação por enquanto</p>
-              <p className="text-xs text-muted-foreground">Suas curtidas, matches e mensagens aparecerão aqui.</p>
+              <p className="text-xs text-muted-foreground">Suas curtidas, matches e avisos aparecerão aqui.</p>
             </div>
           )}
         </div>
@@ -406,5 +411,5 @@ export function TopBar() {
       )}
     </header>
   );
-        }
-                          
+                }
+              
