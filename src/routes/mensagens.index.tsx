@@ -24,8 +24,8 @@ function Messages() {
   const [mutualIds, setMutualIds] = useState<Set<string>>(new Set());
   const [matchLoading, setMatchLoading] = useState(true);
   
-  // Armazena quantas notificações não lidas existem no total ou por tipo
-  const [unreadCount, setUnreadCount] = useState(0);
+  // Estado para armazenar as contagens separadas por cada ID de usuário remetente
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
 
   useEffect(() => {
     if (!profileId) { setMatchLoading(false); return; }
@@ -36,46 +36,60 @@ function Messages() {
     return () => { cancelled = true; };
   }, [profileId]);
 
-  // Buscar notificações não lidas da tabela 'notifications' (que é onde o app realmente grava os avisos)
+  // Buscar mensagens não lidas e escutar em tempo real com alta velocidade
   useEffect(() => {
     if (!profileId) return;
 
-    async function fetchUnreadNotifications() {
+    async function fetchUnreadPerUser() {
       try {
-        const { count, error } = await supabase
-          .from("notifications")
-          .select("*", { count: "exact", head: true })
-          .eq("user_id", profileId)
-          .eq("type", "message")
+        const { data, error } = await supabase
+          .from("chat_messages")
+          .select("sender_id")
+          .eq("receiver_id", profileId)
           .eq("is_read", false);
 
-        if (!error && count !== null) {
-          setUnreadCount(count);
+        if (!error && data) {
+          const counts: Record<string, number> = {};
+          data.forEach((msg: { sender_id: string }) => {
+            if (msg.sender_id) {
+              counts[msg.sender_id] = (counts[msg.sender_id] || 0) + 1;
+            }
+          });
+          setUnreadCounts(counts);
         }
       } catch (err) {
-        console.warn("Erro ao buscar notificações:", err);
+        console.warn("Erro ao buscar contagens por usuário:", err);
       }
     }
 
-    fetchUnreadNotifications();
+    fetchUnreadPerUser();
 
-    // Opcional: Marcar como lidas ao entrar na tela de mensagens para a bolinha sumir
-    async function markAsRead() {
-      await supabase
-        .from("notifications")
-        .update({ is_read: true })
-        .eq("user_id", profileId)
-        .eq("type", "message")
-        .eq("is_read", false);
-    }
-    
-    // Executa a marcação como lida após 1 segundo na tela de mensagens
-    const timer = setTimeout(() => {
-      markAsRead();
-      setUnreadCount(0);
-    }, 1000);
+    // Canal em tempo real para atualizar instantaneamente na mesma velocidade do menu inferior
+    const channel = supabase
+      .channel(`public:chat_messages:ui_notifications:${profileId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "chat_messages",
+          filter: `receiver_id=eq.${profileId}`,
+        },
+        (payload) => {
+          const newMsg = payload.new as { sender_id: string; is_read?: boolean };
+          if (newMsg && newMsg.sender_id) {
+            setUnreadCounts((prev) => ({
+              ...prev,
+              [newMsg.sender_id]: (prev[newMsg.sender_id] || 0) + 1,
+            }));
+          }
+        }
+      )
+      .subscribe();
 
-    return () => clearTimeout(timer);
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [profileId]);
 
   const isLoading = loading || matchLoading;
@@ -96,6 +110,7 @@ function Messages() {
         </div>
       </section>
 
+      {/* Seção de Matches Recentes com o número em cima da foto */}
       <section className="mt-5">
         <h2 className="px-4 text-xs font-bold uppercase tracking-widest text-muted-foreground">Matches recentes</h2>
         <div className="no-scrollbar mt-3 flex gap-3 overflow-x-auto px-4 pb-1">
@@ -107,6 +122,7 @@ function Messages() {
                 </div>
               ))
             : displayProfiles.map((p) => {
+                const unread = unreadCounts[p.id] || 0;
                 return (
                   <Link key={p.id} to="/mensagens/$chatId" params={{ chatId: p.id }}
                     className="tap-scale relative flex w-16 shrink-0 flex-col items-center gap-1.5">
@@ -114,6 +130,13 @@ function Messages() {
                       {p.avatar_url ? (
                         <img src={p.avatar_url} alt={p.name} width={200} height={200} loading="lazy" className="size-full rounded-full object-cover" />
                       ) : <div className="size-full rounded-full bg-surface-2" />}
+                      
+                      {/* Badge numérico em cima da foto do match recente */}
+                      {unread > 0 && (
+                        <span className="absolute top-0 right-0 grid size-5 place-items-center rounded-full bg-primary text-[10px] font-extrabold text-primary-foreground ring-2 ring-background shadow-md">
+                          {unread > 9 ? "9+" : unread}
+                        </span>
+                      )}
                     </span>
                     <span className="w-full truncate text-center text-[11px] font-medium text-muted-foreground">{p.name}</span>
                   </Link>
@@ -122,6 +145,7 @@ function Messages() {
         </div>
       </section>
 
+      {/* Seção de Conversas com a bolinha na foto e o texto "X nova(s)" na direita */}
       <section className="mt-6">
         <h2 className="px-4 text-xs font-bold uppercase tracking-widest text-muted-foreground">Conversas</h2>
         <ul className="mt-2 px-2">
@@ -144,24 +168,43 @@ function Messages() {
                   <p className="max-w-xs text-xs text-muted-foreground">Dê match mútuo no feed para começar a conversar!</p>
                 </li>
               ) : displayProfiles.map((p) => {
+                const unread = unreadCounts[p.id] || 0;
                 return (
                   <li key={p.id}>
                     <Link to="/mensagens/$chatId" params={{ chatId: p.id }}
                       className="tap-scale flex items-center gap-3 rounded-2xl px-2 py-3 active:bg-surface">
+                      
                       <div className="relative shrink-0">
                         {p.avatar_url ? (
                           <img src={p.avatar_url} alt={p.name} width={200} height={200} loading="lazy" className="size-14 rounded-full object-cover" />
                         ) : <div className="size-14 rounded-full bg-surface-2" />}
+                        
+                        {/* Bolinha vermelha na foto da conversa */}
+                        {unread > 0 && (
+                          <span className="absolute -top-1 -right-1 grid size-5 place-items-center rounded-full bg-primary text-[10px] font-extrabold text-primary-foreground ring-2 ring-background shadow-md">
+                            {unread > 9 ? "9+" : unread}
+                          </span>
+                        )}
                       </div>
+
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-1">
                           <div className="flex items-center gap-1 min-w-0">
                             <p className="truncate text-sm font-bold">{p.name}</p>
                             {p.is_verified && <Crown className="size-3.5 shrink-0 text-gold" fill="currentColor" />}
                           </div>
+                          
+                          {/* Etiqueta "1 nova" do lado direito exatamente como na imagem desejada */}
+                          {unread > 0 && (
+                            <span className="rounded-full bg-primary/15 px-2.5 py-0.5 text-[10px] font-bold text-primary shrink-0">
+                              {unread} nova{unread > 1 ? "s" : ""}
+                            </span>
+                          )}
                         </div>
-                        <p className="mt-0.5 truncate text-sm text-muted-foreground">
-                          Conversar com {p.name}
+
+                        {/* Texto dinâmico: se tiver mensagem não lida, exibe "Nova mensagem recebida..." em destaque */}
+                        <p className={`mt-0.5 truncate text-sm ${unread > 0 ? "font-semibold text-foreground" : "text-muted-foreground"}`}>
+                          {unread > 0 ? "Nova mensagem recebida..." : `Conversar com ${p.name}`}
                         </p>
                       </div>
                     </Link>
@@ -172,4 +215,4 @@ function Messages() {
       </section>
     </div>
   );
-                  }
+    }
