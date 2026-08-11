@@ -1,12 +1,11 @@
 import { Link } from "@tanstack/react-router";
 import { useEffect } from "react";
-import { LayoutGrid, MessageCircle, Store, User } from "lucide-react";
-import { HotMatch } from "@/components/hotmatch";
+import { LayoutGrid, MessageCircle, Store, User, Flame } from "lucide-react";
 import { useAppState } from "@/lib/hotmatch/store";
 import { supabase } from "@/lib/supabase";
 
 const items = [
-  { to: "/", label: "Descobrir", icon: (props: { className?: string }) => <HotMatch {...props} /> },
+  { to: "/", label: "Descobrir", icon: Flame },
   { to: "/feed", label: "Feed", icon: LayoutGrid },
   { to: "/mensagens", label: "Mensagens", icon: MessageCircle },
   { to: "/loja", label: "Loja", icon: Store },
