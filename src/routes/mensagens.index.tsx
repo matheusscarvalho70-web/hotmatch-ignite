@@ -8,202 +8,69 @@ import { useAppState } from "@/lib/hotmatch/store";
 import { supabase } from "@/lib/supabase";
 
 export const Route = createFileRoute("/mensagens/")({
-  head: () => ({
-    meta: [
-      { title: "Mensagens & Mimos — HotMatch" },
-      { name: "description", content: "Chat em tempo real, mídias privadas pagas e presentes virtuais." },
-    ],
-  }),
   component: Messages,
 });
 
 function Messages() {
   const { profileId } = useAppState();
   const { profiles, loading } = useProfiles();
-
-  const [mutualIds, setMutualIds] = useState<Set<string>>(new Set());
-  const [matchLoading, setMatchLoading] = useState(true);
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
 
+  // TESTE VISUAL NA TELA: Vamos ver se o profileId existe aqui
   useEffect(() => {
-    if (!profileId) { setMatchLoading(false); return; }
-    let cancelled = false;
-    fetchMutualMatchIds(profileId).then((ids) => {
-      if (!cancelled) { setMutualIds(ids); setMatchLoading(false); }
-    });
-    return () => { cancelled = true; };
-  }, [profileId]);
-
-  // Busca de mensagens não lidas direcionadas ao usuário logado
-  useEffect(() => {
+    console.log("-> VALOR DO PROFILEID NA TELA DE MENSAGENS:", profileId);
     if (!profileId) return;
 
-    async function fetchUnread() {
-      try {
-        const { data, error } = await supabase
-          .from("chat_messages")
-          .select("sender_id, receiver_id, is_read")
-          .eq("receiver_id", profileId)
-          .eq("is_read", false);
-
-        if (!error && data) {
+    supabase
+      .from("chat_messages")
+      .select("sender_id")
+      .eq("receiver_id", profileId)
+      .eq("is_read", false)
+      .then(({ data }) => {
+        console.log("-> MENSAGENS RETORNADAS PARA ESTE ID:", data);
+        if (data) {
           const counts: Record<string, number> = {};
-          data.forEach((msg: any) => {
-            const senderKey = String(msg.sender_id || "").trim();
-            if (senderKey) {
-              counts[senderKey] = (counts[senderKey] || 0) + 1;
-            }
+          data.forEach((m: any) => {
+            counts[String(m.sender_id).trim()] = (counts[String(m.sender_id).trim()] || 0) + 1;
           });
           setUnreadCounts(counts);
         }
-      } catch (err) {
-        console.warn("Erro ao buscar contagens:", err);
-      }
-    }
-
-    fetchUnread();
-
-    // Canal em tempo real na tabela chat_messages
-    const channel = supabase
-      .channel(`public:chat_messages:unread_exact:${profileId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "chat_messages",
-          filter: `receiver_id=eq.${profileId}`,
-        },
-        () => {
-          fetchUnread();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+      });
   }, [profileId]);
 
-  const isLoading = loading || matchLoading;
-  const displayProfiles = profiles.filter((p) => {
-    if (p.id === profileId) return false;
-    if (p.is_demo) return true;
-    return mutualIds.has(p.id);
-  });
+  const displayProfiles = profiles.filter(p => p.id !== profileId);
 
   return (
     <div className="min-h-screen pb-32">
       <TopBar title="Mensagens" />
 
-      <section className="px-4">
-        <div className="flex items-center gap-2 rounded-full border border-border bg-surface px-4 py-2.5">
-          <Search className="size-4 text-muted-foreground" />
-          <input placeholder="Buscar conversa" className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground" />
-        </div>
-      </section>
+      {/* CAIXA DE DEBUG VISUAL NA TELA */}
+      <div className="m-4 rounded-xl bg-red-500/10 border border-red-500 p-3 text-xs text-red-500">
+        <p><b>DEBUG DE ID LOGADO:</b> {profileId || "⚠️ PROFILEID ESTÁ VAZIO (NULL) AQUI!"}</p>
+      </div>
 
-      {/* Seção de Matches Recentes com a contagem em cima da foto */}
       <section className="mt-5">
-        <h2 className="px-4 text-xs font-bold uppercase tracking-widest text-muted-foreground">Matches recentes</h2>
-        <div className="no-scrollbar mt-3 flex gap-3 overflow-x-auto px-4 pb-1">
-          {isLoading
-            ? Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="flex w-16 shrink-0 flex-col items-center gap-1.5">
-                  <div className="size-16 rounded-full bg-surface-2 animate-pulse" />
-                  <div className="h-2 w-10 rounded-full bg-surface-2 animate-pulse" />
-                </div>
-              ))
-            : displayProfiles.map((p) => {
-                const profileKey = String(p.id || "").trim();
-                const unread = unreadCounts[profileKey] || 0;
-                return (
-                  <Link key={p.id} to="/mensagens/$chatId" params={{ chatId: p.id }}
-                    className="tap-scale relative flex w-16 shrink-0 flex-col items-center gap-1.5">
-                    <span className="ring-match relative grid size-16 place-items-center rounded-full p-[2.5px]">
-                      {p.avatar_url ? (
-                        <img src={p.avatar_url} alt={p.name} width={200} height={200} loading="lazy" className="size-full rounded-full object-cover" />
-                      ) : <div className="size-full rounded-full bg-surface-2" />}
-                      
-                      {unread > 0 && (
-                        <span className="absolute top-0 right-0 grid size-5 place-items-center rounded-full bg-primary text-[10px] font-extrabold text-primary-foreground ring-2 ring-background shadow-md">
-                          {unread > 9 ? "9+" : unread}
-                        </span>
-                      )}
-                    </span>
-                    <span className="w-full truncate text-center text-[11px] font-medium text-muted-foreground">{p.name}</span>
-                  </Link>
-                );
-              })}
-        </div>
-      </section>
-
-      {/* Seção de Conversas com a bolinha e o texto de novas mensagens */}
-      <section className="mt-6">
-        <h2 className="px-4 text-xs font-bold uppercase tracking-widest text-muted-foreground">Conversas</h2>
+        <h2 className="px-4 text-xs font-bold uppercase text-muted-foreground">Conversas</h2>
         <ul className="mt-2 px-2">
-          {isLoading
-            ? Array.from({ length: 4 }).map((_, i) => (
-                <li key={i} className="flex items-center gap-3 rounded-2xl px-2 py-3">
-                  <div className="size-14 shrink-0 rounded-full bg-surface-2 animate-pulse" />
-                  <div className="flex-1 space-y-2">
-                    <div className="h-3 w-24 rounded-full bg-surface-2 animate-pulse" />
-                    <div className="h-2 w-40 rounded-full bg-surface-2 animate-pulse" />
+          {displayProfiles.map((p) => {
+            const unread = unreadCounts[String(p.id).trim()] || 0;
+            return (
+              <li key={p.id}>
+                <Link to="/mensagens/$chatId" params={{ chatId: p.id }} className="flex items-center gap-3 p-3">
+                  <div className="relative">
+                    {p.avatar_url ? <img src={p.avatar_url} className="size-14 rounded-full object-cover" /> : <div className="size-14 rounded-full bg-surface-2" />}
+                    {unread > 0 && <span className="absolute -top-1 -right-1 size-5 flex items-center justify-center rounded-full bg-primary text-[10px] text-white">{unread}</span>}
                   </div>
-                </li>
-              ))
-            : displayProfiles.length === 0 ? (
-                <li className="flex flex-col items-center gap-3 py-12 text-center">
-                  <div className="grid size-14 place-items-center rounded-full bg-surface-2">
-                    <MessageCircle className="size-6 text-muted-foreground" />
+                  <div>
+                    <p className="font-bold">{p.name}</p>
+                    {unread > 0 && <p className="text-xs text-primary font-bold">{unread} nova(s) mensagem(ns)</p>}
                   </div>
-                  <p className="text-sm font-semibold">Nenhum match ainda</p>
-                  <p className="max-w-xs text-xs text-muted-foreground">Dê match mútuo no feed para começar a conversar!</p>
-                </li>
-              ) : displayProfiles.map((p) => {
-                const profileKey = String(p.id || "").trim();
-                const unread = unreadCounts[profileKey] || 0;
-                return (
-                  <li key={p.id}>
-                    <Link to="/mensagens/$chatId" params={{ chatId: p.id }}
-                      className="tap-scale flex items-center gap-3 rounded-2xl px-2 py-3 active:bg-surface">
-                      
-                      <div className="relative shrink-0">
-                        {p.avatar_url ? (
-                          <img src={p.avatar_url} alt={p.name} width={200} height={200} loading="lazy" className="size-14 rounded-full object-cover" />
-                        ) : <div className="size-14 rounded-full bg-surface-2" />}
-                        
-                        {unread > 0 && (
-                          <span className="absolute -top-1 -right-1 grid size-5 place-items-center rounded-full bg-primary text-[10px] font-extrabold text-primary-foreground ring-2 ring-background shadow-md">
-                            {unread > 9 ? "9+" : unread}
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center justify-between gap-1">
-                          <div className="flex items-center gap-1 min-w-0">
-                            <p className="truncate text-sm font-bold">{p.name}</p>
-                            {p.is_verified && <Crown className="size-3.5 shrink-0 text-gold" fill="currentColor" />}
-                          </div>
-                          
-                          {unread > 0 && (
-                            <span className="rounded-full bg-primary/15 px-2.5 py-0.5 text-[10px] font-bold text-primary shrink-0">
-                              {unread} nova{unread > 1 ? "s" : ""}
-                            </span>
-                          )}
-                        </div>
-
-                        <p className={`mt-0.5 truncate text-sm ${unread > 0 ? "font-semibold text-foreground" : "text-muted-foreground"}`}>
-                          {unread > 0 ? "Nova mensagem recebida..." : `Conversar com ${p.name}`}
-                        </p>
-                      </div>
-                    </Link>
-                  </li>
-                );
-              })}
+                </Link>
+              </li>
+            );
+          })}
         </ul>
       </section>
     </div>
   );
-      }
+}
