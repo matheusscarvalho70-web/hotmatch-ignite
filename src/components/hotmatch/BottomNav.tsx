@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { LayoutGrid, MessageCircle, Store, User } from "lucide-react";
-import { HotMatch } from "@/components/hotmatch";
+import { HotMatch } from "@/components/hotmatch/HotMatch";
 import { useAppState } from "@/lib/hotmatch/store";
 import { supabase } from "@/lib/supabase";
 
@@ -30,7 +30,6 @@ export function BottomNav() {
           .eq("receiver_id", profileId)
           .eq("is_read", false);
 
-        // Corrigido para garantir que verifica a ausência de erro e a existência de dados
         if (!error && data) {
           const uniqueUsers = new Set(data.map((msg) => msg.sender_id)).size;
           setUnreadUsersCount(uniqueUsers);
@@ -79,7 +78,6 @@ export function BottomNav() {
               <div className="relative flex items-center justify-center">
                 <Icon className="h-5 w-5 transition-transform group-hover:scale-110" />
                 
-                {/* Bolinha vermelha com a contagem em qualquer tela */}
                 {isMessages && unreadUsersCount > 0 && (
                   <span className="absolute -right-2 -top-1.5 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground shadow">
                     {unreadUsersCount}
