@@ -17,7 +17,7 @@ import {
 import { toast } from "sonner";
 import { gifts } from "@/lib/hotmatch/data";
 import { actions, useAppState } from "@/lib/hotmatch/store";
-import { useChat, type LocalMessage } from "@/hooks/use-chat";
+import { useChat } from "@/hooks/use-chat";
 import { useProfiles } from "@/hooks/use-profiles";
 import { supabase } from "@/lib/supabase";
 import { Lightbox } from "@/components/hotmatch/Lightbox";
@@ -60,13 +60,12 @@ function ChatRoute() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // NOVO: Assim que entra no chat, marca todas as mensagens e notificações deste contato como lidas no Supabase
+  // Marca conversas e notificações como lidas ao entrar
   useEffect(() => {
     if (!profileId || !partnerId) return;
 
     async function markConversationAsRead() {
       try {
-        // 1. Atualiza as mensagens diretas para lidas
         await supabase
           .from("chat_messages")
           .update({ is_read: true })
@@ -74,7 +73,6 @@ function ChatRoute() {
           .eq("sender_id", partnerId)
           .eq("is_read", false);
 
-        // 2. Atualiza as notificações globais do menu para lidas
         await supabase
           .from("notifications")
           .update({ is_read: true })
@@ -93,10 +91,40 @@ function ChatRoute() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const handleSend = () => {
+  // FUNÇÃO DE ENVIO APRIMORADA COM DISPARO DO ONESIGNAL
+  const handleSend = async () => {
     if (!inputText.trim()) return;
-    sendMessage(inputText, "text");
+    
+    const textoMensagem = inputText;
+    sendMessage(textoMensagem, "text");
     setInputText("");
+
+    try {
+      // Busca o player_id do destinatário para enviar a notificação push
+      const { data: partnerProfile } = await supabase
+        .from("profiles")
+        .select("onesignal_player_id")
+        .eq("id", partnerId)
+        .single();
+
+      if (partnerProfile?.onesignal_player_id) {
+        await fetch("https://onesignal.com/api/v1/notifications", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": "Basic duyebtwqyudvve4ds6gw4lhin",
+          },
+          body: JSON.stringify({
+            app_id: "f44f0fc5-bd84-4d56-a7e8-38b7d9cf1b68",
+            include_subscription_ids: [partnerProfile.onesignal_player_id],
+            contents: { pt: textoMensagem },
+            headings: { pt: "Nova Mensagem" },
+          }),
+        });
+      }
+    } catch (err) {
+      console.error("Erro ao enviar push notification:", err);
+    }
   };
 
   const handleSendGift = (gift: (typeof gifts)[0]) => {
@@ -319,7 +347,7 @@ function ChatRoute() {
   );
 }
 
-function MessageBubble({ msg, onImageClick }: { msg: LocalMessage; onImageClick?: (url: string) => void }) {
+function MessageBubble({ msg, onImageClick }: { msg: any; onImageClick?: (url: string) => void }) {
   const isMe = msg.from === "me";
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playing, setPlaying] = useState(false);
@@ -383,4 +411,5 @@ function MessageBubble({ msg, onImageClick }: { msg: LocalMessage; onImageClick?
       </div>
     </div>
   );
-    }
+  }
+                                               
