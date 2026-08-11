@@ -40,7 +40,7 @@ export function useNotifications() {
         return;
       }
 
-      // BUSCA TODAS (Lidas e Não Lidas) ordenadas da mais recente para a mais antiga
+      // BUSCA TODAS AS NOTIFICAÇÕES (Lidas e Não Lidas) sem restrição de status
       const { data, error } = await supabase
         .from("notifications")
         .select("*")
@@ -55,7 +55,7 @@ export function useNotifications() {
         setLoading(false);
       }
 
-      // Tempo real para novas notificações chegarem na hora para o ID correto
+      // Tempo real para novas notificações chegarem na hora
       const channel = supabase
         .channel(`notif:${currentUserId}`)
         .on(
