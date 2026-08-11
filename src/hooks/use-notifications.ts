@@ -26,7 +26,6 @@ export function useNotifications() {
         if (profile) targetId = profile.id;
       }
 
-      // Se não achar o ID do perfil, tenta buscar pelo ID do auth
       const queryId = targetId || authUserId;
 
       if (!queryId) {
@@ -37,30 +36,19 @@ export function useNotifications() {
         return;
       }
 
-      // Busca na tabela notifications permitindo encontrar pelo user_id ou se faltar, traz as últimas gerais para teste
-      let { data, error } = await supabase
+      // Busca limpa direcionada apenas para o usuário logado atual
+      const { data, error } = await supabase
         .from("notifications")
         .select("*")
-        .or(`user_id.eq.${queryId},user_id.eq.${authUserId || ""}`)
+        .eq("user_id", queryId)
         .order("created_at", { ascending: false })
         .limit(30);
 
-      // Se a consulta acima vier vazia por incompatibilidade de UUID, faz uma busca livre nas últimas notificações da tabela para teste
-      if ((!data || data.length === 0) && !error) {
-        const { data: fallbackData } = await supabase
-          .from("notifications")
-          .select("*")
-          .order("created_at", { ascending: false })
-          .limit(10);
-        
-        if (fallbackData) {
-          data = fallbackData;
-        }
-      }
-
       if (!cancelled) {
-        if (data) {
+        if (!error && data) {
           setNotifications(data as DbNotification[]);
+        } else {
+          setNotifications([]);
         }
         setLoading(false);
       }
@@ -71,11 +59,15 @@ export function useNotifications() {
 
   async function markAllRead() {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    const authUserId = user?.id;
+    const targetId = profileId || authUserId;
+
+    if (!targetId) return;
 
     await supabase
       .from("notifications")
       .update({ is_read: true })
+      .eq("user_id", targetId)
       .eq("is_read", false);
 
     setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
