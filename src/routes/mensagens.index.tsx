@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Crown, MessageCircle, Search } from "lucide-react";
+import { MessageCircle } from "lucide-react";
 import { TopBar } from "@/components/hotmatch/TopBar";
 import { useProfiles } from "@/hooks/use-profiles";
 import { useAppState } from "@/lib/hotmatch/store";
@@ -16,31 +16,28 @@ function Messages() {
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
 
   useEffect(() => {
-    if (!profileId) return;
-
-    async function fetchUnread() {
+    async function fetchAllUnread() {
+      // Busca todas as mensagens não lidas do banco globalmente para teste
       const { data, error } = await supabase
         .from("chat_messages")
         .select("sender_id, receiver_id, is_read")
-        .eq("receiver_id", profileId)
         .eq("is_read", false);
 
       if (!error && data) {
         const counts: Record<string, number> = {};
         data.forEach((m: any) => {
-          const senderId = String(m.sender_id || "").trim();
-          if (senderId) {
-            counts[senderId] = (counts[senderId] || 0) + 1;
+          const sender = String(m.sender_id || "").trim();
+          if (sender) {
+            counts[sender] = (counts[sender] || 0) + 1;
           }
         });
         setUnreadCounts(counts);
       }
     }
 
-    fetchUnread();
-  }, [profileId]);
+    fetchAllUnread();
+  }, []);
 
-  // MOSTRA TODOS OS PERFIS EXCETO O SEU (SEM TRAVA DE MATCH PARA TESTE)
   const displayProfiles = profiles.filter(p => p.id !== profileId);
 
   return (
@@ -48,7 +45,7 @@ function Messages() {
       <TopBar title="Mensagens" />
 
       <section className="mt-6">
-        <h2 className="px-4 text-xs font-bold uppercase tracking-widest text-muted-foreground">Conversas (Modo Diagnóstico)</h2>
+        <h2 className="px-4 text-xs font-bold uppercase tracking-widest text-muted-foreground">Conversas</h2>
         <ul className="mt-2 px-2">
           {displayProfiles.map((p) => {
             const profileKey = String(p.id || "").trim();
@@ -82,8 +79,11 @@ function Messages() {
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-muted-foreground">ID: {p.id}</p>
-                    {unread > 0 && <p className="text-xs text-primary font-bold">Tem mensagem não lida!</p>}
+                    {unread > 0 ? (
+                      <p className="text-xs text-primary font-bold">Tem {unread} mensagem(ns) não lida(s)</p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">Nenhuma nova mensagem</p>
+                    )}
                   </div>
                 </Link>
               </li>
