@@ -12,12 +12,24 @@ export function useNotifications() {
     setLoading(true);
 
     async function fetchUserAndNotifications() {
-      // Garante o ID ativo do usuário por store ou direto da sessão do Supabase
       let currentUserId = profileId;
       
+      // Se não houver profileId na store, busca o ID do perfil vinculado ao usuário atual do Auth
       if (!currentUserId) {
         const { data: { user } } = await supabase.auth.getUser();
-        currentUserId = user?.id || null;
+        if (user) {
+          const { data: profileData } = await supabase
+            .from("profiles")
+            .select("id")
+            .eq("user_id", user.id)
+            .single();
+          
+          if (profileData) {
+            currentUserId = profileData.id;
+          } else {
+            currentUserId = user.id;
+          }
+        }
       }
 
       if (!currentUserId) {
@@ -80,19 +92,24 @@ export function useNotifications() {
     let currentUserId = profileId;
     if (!currentUserId) {
       const { data: { user } } = await supabase.auth.getUser();
-      currentUserId = user?.id || null;
+      if (user) {
+        const { data: profileData } = await supabase
+          .from("profiles")
+          .select("id")
+          .eq("user_id", user.id)
+          .single();
+        currentUserId = profileData ? profileData.id : user.id;
+      }
     }
 
     if (!currentUserId) return;
 
-    // Marca no banco como lida apenas para tirar a bolinha vermelha do sininho
     await supabase
       .from("notifications")
       .update({ is_read: true })
       .eq("user_id", currentUserId)
       .eq("is_read", false);
     
-    // Atualiza o estado local mantendo elas na tela (agora como lidas)
     setNotifications((p) => p.map((n) => ({ ...n, is_read: true })));
   }
 
