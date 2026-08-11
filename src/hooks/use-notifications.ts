@@ -13,29 +13,25 @@ export function useNotifications() {
     async function loadNotifications() {
       setLoading(true);
 
-      let targetId = profileId;
+      // Pega o ID da store e também o ID do Auth do Supabase simultaneamente
+      const { data: { user } } = await supabase.auth.getUser();
+      const authUserId = user?.id;
 
-      if (!targetId) {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          const { data: profile } = await supabase
-            .from("profiles")
-            .select("id")
-            .eq("user_id", user.id)
-            .maybeSingle();
-
-          if (profile) {
-            targetId = profile.id;
-          } else {
-            targetId = user.id;
-          }
-        }
+      let profileRowId = profileId;
+      if (!profileRowId && authUserId) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("id")
+          .eq("user_id", authUserId)
+          .maybeSingle();
+        if (profile) profileRowId = profile.id;
       }
 
-      console.log("🔍 [DIAGNÓSTICO SININHO] ID Buscado:", targetId);
+      // Junta todos os IDs possíveis para garantir que encontre a notificação onde quer que ela esteja salva
+      const possibleIds = [profileId, profileRowId, authUserId].filter(Boolean) as string[];
+      const uniqueIds = Array.from(new Set(possibleIds));
 
-      if (!targetId) {
-        console.warn("⚠️ [DIAGNÓSTICO SININHO] Nenhum ID encontrado para buscar notificações.");
+      if (uniqueIds.length === 0) {
         if (!cancelled) {
           setNotifications([]);
           setLoading(false);
@@ -43,19 +39,13 @@ export function useNotifications() {
         return;
       }
 
-      // Busca na tabela notifications
+      // Busca na tabela notifications usando QUALQUER um dos IDs válidos
       const { data, error } = await supabase
         .from("notifications")
         .select("*")
-        .eq("user_id", targetId)
+        .in("user_id", uniqueIds)
         .order("created_at", { ascending: false })
         .limit(40);
-
-      if (error) {
-        console.error("❌ [DIAGNÓSTICO SININHO] Erro na consulta do Supabase:", error);
-      } else {
-        console.log("✅ [DIAGNÓSTICO SININHO] Notificações encontradas:", data);
-      }
 
       if (!cancelled) {
         if (!error && data) {
@@ -69,7 +59,7 @@ export function useNotifications() {
   }, [profileId]);
 
   async function markAllRead() {
-    // Mantém a função limpa
+    // Mantém limpo
   }
 
   return {
