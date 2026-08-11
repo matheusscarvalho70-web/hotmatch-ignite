@@ -13,8 +13,9 @@ import { useEffect, type ReactNode } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { BottomNav } from "@/components/hotmatch/BottomNav";
 import { useSessionBootstrap } from "@/hooks/use-profiles";
-import { useAppState } from "@/lib/hotmatch/store";
+import { useAppState, refreshUnreadUsersCount } from "@/lib/hotmatch/store";
 import { initOneSignal } from "@/lib/hotmatch/onesignal";
+import { supabase } from "@/lib/supabase";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
@@ -128,11 +129,40 @@ function RootComponent() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const hideNav = /^\/mensagens\/.+/.test(pathname) || pathname.startsWith("/bem-vindo");
 
+  const { profileId } = useAppState();
+
   // Bootstrap session from DB on every app load
   useSessionBootstrap();
 
   // Initialize OneSignal Web Push (idempotent — safe on every render)
   useEffect(() => { initOneSignal(); }, []);
+
+  // Sincronização global em tempo real das mensagens não lidas
+  useEffect(() => {
+    if (!profileId) return;
+
+    refreshUnreadUsersCount();
+
+    const channel = supabase
+      .channel(`global-root-unread-${profileId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "chat_messages",
+          filter: `receiver_id=eq.${profileId}`,
+        },
+        () => {
+          refreshUnreadUsersCount();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [profileId]);
 
   return (
     <QueryClientProvider client={queryClient}>
