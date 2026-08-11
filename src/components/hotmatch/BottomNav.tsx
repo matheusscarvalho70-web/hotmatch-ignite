@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { LayoutGrid, MessageCircle, Store, User } from "lucide-react";
-import { HotMatch } from "@/components/hotmatch/HotMatch";
+import { HotMatch } from "@/components/hotmatch";
 import { useAppState } from "@/lib/hotmatch/store";
 import { supabase } from "@/lib/supabase";
 
