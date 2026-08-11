@@ -137,11 +137,17 @@ function RootComponent() {
   // Initialize OneSignal Web Push (idempotent — safe on every render)
   useEffect(() => { initOneSignal(); }, []);
 
-  // Sincronização global em tempo real das mensagens não lidas
+  // Sincronização global em tempo real e verificação periódica
   useEffect(() => {
     if (!profileId) return;
 
+    // Busca inicial ao carregar
     refreshUnreadUsersCount();
+
+    // Verificação de segurança a cada 5 segundos
+    const interval = setInterval(() => {
+      refreshUnreadUsersCount();
+    }, 5000);
 
     const channel = supabase
       .channel(`global-root-unread-${profileId}`)
@@ -160,6 +166,7 @@ function RootComponent() {
       .subscribe();
 
     return () => {
+      clearInterval(interval);
       supabase.removeChannel(channel);
     };
   }, [profileId]);
@@ -192,4 +199,4 @@ function AuthGuard() {
   }, [profileId, isPublic, pathname, navigate]);
 
   return null;
-}
+                                   }
