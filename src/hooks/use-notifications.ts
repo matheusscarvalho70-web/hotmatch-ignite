@@ -5,34 +5,36 @@ import { useAppState } from "@/lib/hotmatch/store";
 export function useNotifications() {
   const { profileId } = useAppState();
   const [notifications, setNotifications] = useState<DbNotification[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
 
-    async function fetchUserAndNotifications() {
-      let currentUserId = profileId;
-      
-      // Se não houver profileId na store, busca o ID do perfil vinculado ao usuário atual do Auth
-      if (!currentUserId) {
+    async function loadNotifications() {
+      setLoading(true);
+
+      // 1. Tenta pegar o ID direto da store ou da sessão do Supabase Auth / Profiles
+      let targetId = profileId;
+
+      if (!targetId) {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
-          const { data: profileData } = await supabase
+          // Busca o perfil correspondente ao usuário logado
+          const { data: profile } = await supabase
             .from("profiles")
             .select("id")
             .eq("user_id", user.id)
-            .single();
-          
-          if (profileData) {
-            currentUserId = profileData.id;
+            .maybeSingle();
+
+          if (profile) {
+            targetId = profile.id;
           } else {
-            currentUserId = user.id;
+            targetId = user.id;
           }
         }
       }
 
-      if (!currentUserId) {
+      if (!targetId) {
         if (!cancelled) {
           setNotifications([]);
           setLoading(false);
@@ -40,11 +42,11 @@ export function useNotifications() {
         return;
       }
 
-      // BUSCA TODAS AS NOTIFICAÇÕES (Lidas e Não Lidas) sem restrição de status
+      // 2. Busca todas as notificações do usuário (sem restrição de lidas/não lidas)
       const { data, error } = await supabase
         .from("notifications")
         .select("*")
-        .eq("user_id", currentUserId)
+        .eq("user_id", targetId)
         .order("created_at", { ascending: false })
         .limit(40);
 
@@ -55,20 +57,20 @@ export function useNotifications() {
         setLoading(false);
       }
 
-      // Tempo real para novas notificações chegarem na hora
+      // 3. Ouve novas notificações em tempo real para este ID exato
       const channel = supabase
-        .channel(`notif:${currentUserId}`)
+        .channel(`notifications-realtime-${targetId}`)
         .on(
           "postgres_changes",
           {
             event: "INSERT",
             schema: "public",
             table: "notifications",
-            filter: `user_id=eq.${currentUserId}`,
+            filter: `user_id=eq.${targetId}`,
           },
           (payload) => {
             if (!cancelled) {
-              setNotifications((p) => [payload.new as DbNotification, ...p]);
+              setNotifications((prev) => [payload.new as DbNotification, ...prev]);
             }
           }
         )
@@ -80,7 +82,7 @@ export function useNotifications() {
       };
     }
 
-    const cleanupPromise = fetchUserAndNotifications();
+    const cleanupPromise = loadNotifications();
 
     return () => {
       cancelled = true;
@@ -89,28 +91,28 @@ export function useNotifications() {
   }, [profileId]);
 
   async function markAllRead() {
-    let currentUserId = profileId;
-    if (!currentUserId) {
+    let targetId = profileId;
+    if (!targetId) {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        const { data: profileData } = await supabase
+        const { data: profile } = await supabase
           .from("profiles")
           .select("id")
           .eq("user_id", user.id)
-          .single();
-        currentUserId = profileData ? profileData.id : user.id;
+          .maybeSingle();
+        targetId = profile ? profile.id : user.id;
       }
     }
 
-    if (!currentUserId) return;
+    if (!targetId) return;
 
     await supabase
       .from("notifications")
       .update({ is_read: true })
-      .eq("user_id", currentUserId)
+      .eq("user_id", targetId)
       .eq("is_read", false);
-    
-    setNotifications((p) => p.map((n) => ({ ...n, is_read: true })));
+
+    setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
   }
 
   return {
