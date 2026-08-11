@@ -21,11 +21,8 @@ function Messages() {
   const { profileId } = useAppState();
   const { profiles, loading } = useProfiles();
 
-  // Load confirmed mutual matches from the mutual_matches table.
   const [mutualIds, setMutualIds] = useState<Set<string>>(new Set());
   const [matchLoading, setMatchLoading] = useState(true);
-  
-  // Estado para armazenar as contagens de mensagens não lidas por remetente (partnerId -> count)
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
 
   useEffect(() => {
@@ -49,6 +46,7 @@ function Messages() {
           .eq("receiver_id", profileId)
           .eq("is_read", false);
 
+        // CORREÇÃO: Verifica se NÃO há erro e se existem dados
         if (!error && data) {
           const counts: Record<string, number> = {};
           data.forEach((msg: { sender_id: string }) => {
@@ -65,7 +63,6 @@ function Messages() {
 
     fetchUnread();
 
-    // Inscrever em tempo real para atualizar as bolinhas se nova mensagem chegar
     const channel = supabase
       .channel(`public:chat_messages:unread:${profileId}`)
       .on(
@@ -93,8 +90,6 @@ function Messages() {
     };
   }, [profileId]);
 
-  // Show only profiles where there is a confirmed mutual match.
-  // Demo partners always appear so the demo flow is never blocked.
   const isLoading = loading || matchLoading;
   const displayProfiles = profiles.filter((p) => {
     if (p.id === profileId) return false;
@@ -206,4 +201,4 @@ function Messages() {
       </section>
     </div>
   );
-                }
+}
