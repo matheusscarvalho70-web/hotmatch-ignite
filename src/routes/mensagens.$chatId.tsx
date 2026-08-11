@@ -10,7 +10,6 @@ import {
   Mic,
   MoreVertical,
   Pause,
-  PhoneOff,
   Play,
   Send,
   X,
@@ -60,6 +59,35 @@ function ChatRoute() {
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // NOVO: Assim que entra no chat, marca todas as mensagens e notificações deste contato como lidas no Supabase
+  useEffect(() => {
+    if (!profileId || !partnerId) return;
+
+    async function markConversationAsRead() {
+      try {
+        // 1. Atualiza as mensagens diretas para lidas
+        await supabase
+          .from("chat_messages")
+          .update({ is_read: true })
+          .eq("receiver_id", profileId)
+          .eq("sender_id", partnerId)
+          .eq("is_read", false);
+
+        // 2. Atualiza as notificações globais do menu para lidas
+        await supabase
+          .from("notifications")
+          .update({ is_read: true })
+          .eq("user_id", profileId)
+          .eq("type", "message")
+          .eq("is_read", false);
+      } catch (err) {
+        console.error("Erro ao marcar conversas como lidas:", err);
+      }
+    }
+
+    markConversationAsRead();
+  }, [profileId, partnerId, messages]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -355,5 +383,4 @@ function MessageBubble({ msg, onImageClick }: { msg: LocalMessage; onImageClick?
       </div>
     </div>
   );
-            }
-        
+    }
