@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { MessageCircle } from "lucide-react";
+import { Search, MessageCircle } from "lucide-react";
 import { TopBar } from "@/components/hotmatch/TopBar";
 import { useProfiles } from "@/hooks/use-profiles";
 import { useAppState } from "@/lib/hotmatch/store";
@@ -14,8 +14,8 @@ function Messages() {
   const { profileId } = useAppState();
   const { profiles } = useProfiles();
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+  const [searchQuery, setSearchQuery] = useState("");
 
-  // Chave única para salvar no celular quais chats já foram abertos/lidos
   const storageKey = `read_chats_${profileId}`;
 
   useEffect(() => {
@@ -28,7 +28,6 @@ function Messages() {
         .eq("receiver_id", profileId);
 
       if (!error && data) {
-        // Recupera do armazenamento local quais chats já foram vistos
         let readCache: Record<string, string> = {};
         try {
           readCache = JSON.parse(localStorage.getItem(storageKey) || "{}");
@@ -39,7 +38,6 @@ function Messages() {
         data.forEach((m: any) => {
           const sender = String(m.sender_id || "").trim();
           if (sender && sender !== profileId) {
-            // Se houver registro de leitura, só conta mensagens enviadas DEPOIS da última abertura
             const lastReadTime = readCache[sender];
             if (!lastReadTime || new Date(m.created_at) > new Date(lastReadTime)) {
               counts[sender] = (counts[sender] || 0) + 1;
@@ -51,9 +49,8 @@ function Messages() {
     }
 
     fetchCounts();
-  }, [profileId]);
+  }, [profileId, storageKey]);
 
-  // Função que zera o contador individual ao clicar no chat do usuário
   const handleOpenChat = (senderId: string) => {
     try {
       let readCache: Record<string, string> = {};
@@ -61,25 +58,80 @@ function Messages() {
         readCache = JSON.parse(localStorage.getItem(storageKey) || "{}");
       } catch (e) {}
 
-      // Salva o horário atual como o momento em que este chat foi lido
       readCache[senderId] = new Date().toISOString();
       localStorage.setItem(storageKey, JSON.stringify(readCache));
 
-      // Zera o contador na tela imediatamente para este usuário
       setUnreadCounts(prev => ({ ...prev, [senderId]: 0 }));
     } catch (e) {}
   };
 
   const displayProfiles = profiles.filter(p => p.id !== profileId);
 
+  // Filtro para a barra de busca
+  const filteredProfiles = displayProfiles.filter(p => 
+    p.name?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   return (
     <div className="min-h-screen pb-32">
       <TopBar title="Mensagens" />
 
+      {/* BARRA DE BUSCA DE CONVERSA */}
+      <div className="px-4 mt-3">
+        <div className="relative flex items-center">
+          <Search className="absolute left-3.5 size-4 text-muted-foreground" />
+          <input
+            type="text"
+            placeholder="Buscar conversa"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full h-11 pl-10 pr-4 rounded-full bg-surface-2 border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+          />
+        </div>
+      </div>
+
+      {/* MATCHES RECENTES (CARROSSEL HORIZONTAL) */}
+      {!searchQuery && (
+        <section className="mt-6">
+          <h2 className="px-4 text-xs font-bold uppercase tracking-widest text-muted-foreground">Matches Recentes</h2>
+          <div className="flex gap-4 overflow-x-auto px-4 mt-3 pb-2 scrollbar-none">
+            {displayProfiles.map((p) => {
+              const profileKey = String(p.id || "").trim();
+              const unread = unreadCounts[profileKey] || 0;
+
+              return (
+                <Link
+                  key={`match-${p.id}`}
+                  to="/mensagens/$chatId"
+                  params={{ chatId: p.id }}
+                  onClick={() => handleOpenChat(profileKey)}
+                  className="flex flex-col items-center gap-1.5 shrink-0 group"
+                >
+                  <div className="relative p-0.5 rounded-full bg-gradient-to-tr from-primary via-accent to-primary">
+                    {p.avatar_url ? (
+                      <img src={p.avatar_url} alt={p.name} className="size-16 rounded-full object-cover border-2 border-background" />
+                    ) : (
+                      <div className="size-16 rounded-full bg-surface-2 border-2 border-background" />
+                    )}
+                    {unread > 0 && (
+                      <span className="absolute top-0 right-0 grid size-5 place-items-center rounded-full bg-primary text-[10px] font-extrabold text-primary-foreground ring-2 ring-background shadow-md">
+                        {unread > 9 ? "9+" : unread}
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-xs font-medium text-foreground truncate w-16 text-center">{p.name}</span>
+                </Link>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* LISTA DE CONVERSAS */}
       <section className="mt-6">
         <h2 className="px-4 text-xs font-bold uppercase tracking-widest text-muted-foreground">Conversas</h2>
         <ul className="mt-2 px-2">
-          {displayProfiles.map((p) => {
+          {filteredProfiles.map((p) => {
             const profileKey = String(p.id || "").trim();
             const unread = unreadCounts[profileKey] || 0;
 
@@ -127,4 +179,4 @@ function Messages() {
       </section>
     </div>
   );
-}
+            }
