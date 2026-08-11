@@ -21,7 +21,7 @@ export function BottomNav() {
       return;
     }
 
-    const fetchUnreadCount = async () => {
+    const fetchGlobalUnread = async () => {
       try {
         const { data, error } = await supabase
           .from("chat_messages")
@@ -34,14 +34,14 @@ export function BottomNav() {
           setUnreadUsersCount(uniqueSenders);
         }
       } catch (err) {
-        console.warn("Erro ao buscar contagem global de não lidas:", err);
+        console.warn("Erro ao buscar mensagens globais não lidas:", err);
       }
     };
 
-    fetchUnreadCount();
+    fetchGlobalUnread();
 
     const channel = supabase
-      .channel(`global:bottom_nav:unread:${profileId}`)
+      .channel(`global-bottom-nav-unread-${profileId}`)
       .on(
         "postgres_changes",
         {
@@ -51,7 +51,7 @@ export function BottomNav() {
           filter: `receiver_id=eq.${profileId}`,
         },
         () => {
-          fetchUnreadCount();
+          fetchGlobalUnread();
         }
       )
       .subscribe();
