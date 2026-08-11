@@ -11,7 +11,7 @@ export const Route = createFileRoute("/mensagens/")({
   head: () => ({
     meta: [
       { title: "Mensagens & Mimos — HotMatch" },
-      { name: "description", content: "Chat em tempo real e notificações." },
+      { name: "description", content: "Chat em tempo real, mídias privadas pagas e presentes virtuais." },
     ],
   }),
   component: Messages,
@@ -34,23 +34,22 @@ function Messages() {
     return () => { cancelled = true; };
   }, [profileId]);
 
-  // Sincronização unificada com a tabela notifications
+  // Busca de mensagens não lidas direcionadas ao usuário logado
   useEffect(() => {
     if (!profileId) return;
 
-    async function fetchNotifications() {
+    async function fetchUnread() {
       try {
         const { data, error } = await supabase
-          .from("notifications")
-          .select("sender_id, type, is_read")
-          .eq("user_id", profileId) // Ajuste se a coluna for receiver_id ou similar
-          .eq("type", "message")
+          .from("chat_messages")
+          .select("sender_id, receiver_id, is_read")
+          .eq("receiver_id", profileId)
           .eq("is_read", false);
 
         if (!error && data) {
           const counts: Record<string, number> = {};
-          data.forEach((n: any) => {
-            const senderKey = String(n.sender_id || "").trim();
+          data.forEach((msg: any) => {
+            const senderKey = String(msg.sender_id || "").trim();
             if (senderKey) {
               counts[senderKey] = (counts[senderKey] || 0) + 1;
             }
@@ -58,24 +57,25 @@ function Messages() {
           setUnreadCounts(counts);
         }
       } catch (err) {
-        console.warn("Erro ao buscar notificações:", err);
+        console.warn("Erro ao buscar contagens:", err);
       }
     }
 
-    fetchNotifications();
+    fetchUnread();
 
+    // Canal em tempo real na tabela chat_messages
     const channel = supabase
-      .channel(`public:notifications:sync:${profileId}`)
+      .channel(`public:chat_messages:unread_exact:${profileId}`)
       .on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
-          table: "notifications",
-          filter: `user_id=eq.${profileId}`,
+          table: "chat_messages",
+          filter: `receiver_id=eq.${profileId}`,
         },
         () => {
-          fetchNotifications();
+          fetchUnread();
         }
       )
       .subscribe();
@@ -96,46 +96,114 @@ function Messages() {
     <div className="min-h-screen pb-32">
       <TopBar title="Mensagens" />
 
-      <section className="mt-5">
-        <h2 className="px-4 text-xs font-bold uppercase tracking-widest text-muted-foreground">Matches recentes</h2>
-        <div className="no-scrollbar mt-3 flex gap-3 overflow-x-auto px-4 pb-1">
-          {isLoading ? <div className="h-20 animate-pulse bg-surface-2 w-full rounded-2xl" /> : displayProfiles.map((p) => {
-            const unread = unreadCounts[String(p.id).trim()] || 0;
-            return (
-              <Link key={p.id} to="/mensagens/$chatId" params={{ chatId: p.id }} className="relative flex w-16 shrink-0 flex-col items-center gap-1.5">
-                <span className="ring-match relative grid size-16 place-items-center rounded-full p-[2.5px]">
-                  {p.avatar_url ? <img src={p.avatar_url} className="size-full rounded-full object-cover" /> : <div className="size-full rounded-full bg-surface-2" />}
-                  {unread > 0 && <span className="absolute top-0 right-0 grid size-5 place-items-center rounded-full bg-primary text-[10px] font-extrabold text-primary-foreground ring-2 ring-background shadow-md">{unread}</span>}
-                </span>
-                <span className="truncate text-[11px] text-muted-foreground">{p.name}</span>
-              </Link>
-            );
-          })}
+      <section className="px-4">
+        <div className="flex items-center gap-2 rounded-full border border-border bg-surface px-4 py-2.5">
+          <Search className="size-4 text-muted-foreground" />
+          <input placeholder="Buscar conversa" className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground" />
         </div>
       </section>
 
+      {/* Seção de Matches Recentes com a contagem em cima da foto */}
+      <section className="mt-5">
+        <h2 className="px-4 text-xs font-bold uppercase tracking-widest text-muted-foreground">Matches recentes</h2>
+        <div className="no-scrollbar mt-3 flex gap-3 overflow-x-auto px-4 pb-1">
+          {isLoading
+            ? Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="flex w-16 shrink-0 flex-col items-center gap-1.5">
+                  <div className="size-16 rounded-full bg-surface-2 animate-pulse" />
+                  <div className="h-2 w-10 rounded-full bg-surface-2 animate-pulse" />
+                </div>
+              ))
+            : displayProfiles.map((p) => {
+                const profileKey = String(p.id || "").trim();
+                const unread = unreadCounts[profileKey] || 0;
+                return (
+                  <Link key={p.id} to="/mensagens/$chatId" params={{ chatId: p.id }}
+                    className="tap-scale relative flex w-16 shrink-0 flex-col items-center gap-1.5">
+                    <span className="ring-match relative grid size-16 place-items-center rounded-full p-[2.5px]">
+                      {p.avatar_url ? (
+                        <img src={p.avatar_url} alt={p.name} width={200} height={200} loading="lazy" className="size-full rounded-full object-cover" />
+                      ) : <div className="size-full rounded-full bg-surface-2" />}
+                      
+                      {unread > 0 && (
+                        <span className="absolute top-0 right-0 grid size-5 place-items-center rounded-full bg-primary text-[10px] font-extrabold text-primary-foreground ring-2 ring-background shadow-md">
+                          {unread > 9 ? "9+" : unread}
+                        </span>
+                      )}
+                    </span>
+                    <span className="w-full truncate text-center text-[11px] font-medium text-muted-foreground">{p.name}</span>
+                  </Link>
+                );
+              })}
+        </div>
+      </section>
+
+      {/* Seção de Conversas com a bolinha e o texto de novas mensagens */}
       <section className="mt-6">
         <h2 className="px-4 text-xs font-bold uppercase tracking-widest text-muted-foreground">Conversas</h2>
         <ul className="mt-2 px-2">
-          {displayProfiles.map((p) => {
-            const unread = unreadCounts[String(p.id).trim()] || 0;
-            return (
-              <li key={p.id}>
-                <Link to="/mensagens/$chatId" params={{ chatId: p.id }} className="flex items-center gap-3 rounded-2xl px-2 py-3 active:bg-surface">
-                  <div className="relative">
-                    {p.avatar_url ? <img src={p.avatar_url} className="size-14 rounded-full object-cover" /> : <div className="size-14 rounded-full bg-surface-2" />}
-                    {unread > 0 && <span className="absolute -top-1 -right-1 grid size-5 place-items-center rounded-full bg-primary text-[10px] font-extrabold text-primary-foreground ring-2 ring-background shadow-md">{unread}</span>}
+          {isLoading
+            ? Array.from({ length: 4 }).map((_, i) => (
+                <li key={i} className="flex items-center gap-3 rounded-2xl px-2 py-3">
+                  <div className="size-14 shrink-0 rounded-full bg-surface-2 animate-pulse" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-3 w-24 rounded-full bg-surface-2 animate-pulse" />
+                    <div className="h-2 w-40 rounded-full bg-surface-2 animate-pulse" />
                   </div>
-                  <div className="flex-1">
-                    <p className="text-sm font-bold">{p.name}</p>
-                    {unread > 0 && <p className="text-xs font-semibold text-primary">{unread} nova(s) mensagem(ns)</p>}
+                </li>
+              ))
+            : displayProfiles.length === 0 ? (
+                <li className="flex flex-col items-center gap-3 py-12 text-center">
+                  <div className="grid size-14 place-items-center rounded-full bg-surface-2">
+                    <MessageCircle className="size-6 text-muted-foreground" />
                   </div>
-                </Link>
-              </li>
-            );
-          })}
+                  <p className="text-sm font-semibold">Nenhum match ainda</p>
+                  <p className="max-w-xs text-xs text-muted-foreground">Dê match mútuo no feed para começar a conversar!</p>
+                </li>
+              ) : displayProfiles.map((p) => {
+                const profileKey = String(p.id || "").trim();
+                const unread = unreadCounts[profileKey] || 0;
+                return (
+                  <li key={p.id}>
+                    <Link to="/mensagens/$chatId" params={{ chatId: p.id }}
+                      className="tap-scale flex items-center gap-3 rounded-2xl px-2 py-3 active:bg-surface">
+                      
+                      <div className="relative shrink-0">
+                        {p.avatar_url ? (
+                          <img src={p.avatar_url} alt={p.name} width={200} height={200} loading="lazy" className="size-14 rounded-full object-cover" />
+                        ) : <div className="size-14 rounded-full bg-surface-2" />}
+                        
+                        {unread > 0 && (
+                          <span className="absolute -top-1 -right-1 grid size-5 place-items-center rounded-full bg-primary text-[10px] font-extrabold text-primary-foreground ring-2 ring-background shadow-md">
+                            {unread > 9 ? "9+" : unread}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-1">
+                          <div className="flex items-center gap-1 min-w-0">
+                            <p className="truncate text-sm font-bold">{p.name}</p>
+                            {p.is_verified && <Crown className="size-3.5 shrink-0 text-gold" fill="currentColor" />}
+                          </div>
+                          
+                          {unread > 0 && (
+                            <span className="rounded-full bg-primary/15 px-2.5 py-0.5 text-[10px] font-bold text-primary shrink-0">
+                              {unread} nova{unread > 1 ? "s" : ""}
+                            </span>
+                          )}
+                        </div>
+
+                        <p className={`mt-0.5 truncate text-sm ${unread > 0 ? "font-semibold text-foreground" : "text-muted-foreground"}`}>
+                          {unread > 0 ? "Nova mensagem recebida..." : `Conversar com ${p.name}`}
+                        </p>
+                      </div>
+                    </Link>
+                  </li>
+                );
+              })}
         </ul>
       </section>
     </div>
   );
-}
+      }
