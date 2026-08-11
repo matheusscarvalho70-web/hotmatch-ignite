@@ -13,25 +13,24 @@ export function useNotifications() {
     async function loadNotifications() {
       setLoading(true);
 
-      // Pega o ID da store e também o ID do Auth do Supabase simultaneamente
       const { data: { user } } = await supabase.auth.getUser();
       const authUserId = user?.id;
 
-      let profileRowId = profileId;
-      if (!profileRowId && authUserId) {
+      let targetId = profileId;
+      if (!targetId && authUserId) {
         const { data: profile } = await supabase
           .from("profiles")
           .select("id")
           .eq("user_id", authUserId)
           .maybeSingle();
-        if (profile) profileRowId = profile.id;
+        if (profile) targetId = profile.id;
       }
 
-      // Junta todos os IDs possíveis para garantir que encontre a notificação onde quer que ela esteja salva
-      const possibleIds = [profileId, profileRowId, authUserId].filter(Boolean) as string[];
-      const uniqueIds = Array.from(new Set(possibleIds));
+      if (!targetId && authUserId) {
+        targetId = authUserId;
+      }
 
-      if (uniqueIds.length === 0) {
+      if (!targetId) {
         if (!cancelled) {
           setNotifications([]);
           setLoading(false);
@@ -39,16 +38,36 @@ export function useNotifications() {
         return;
       }
 
-      // Busca na tabela notifications usando QUALQUER um dos IDs válidos
-      const { data, error } = await supabase
+      // Busca as notificações do ID atual
+      let { data, error } = await supabase
         .from("notifications")
         .select("*")
-        .in("user_id", uniqueIds)
+        .eq("user_id", targetId)
         .order("created_at", { ascending: false })
         .limit(40);
 
+      // SE NÃO TIVER NENHUMA NOTIFICAÇÃO, CRIA UMA DE BOAS-VINDAS AUTOMATICAMENTE PARA ESTE USUÁRIO
+      if ((!data || data.length === 0) && !error) {
+        const newWelcome = {
+          user_id: targetId,
+          type: "welcome",
+          title: "Bem-vindo ao HotMatch! 🔥",
+          content: "Explore o feed e converse com pessoas incríveis.",
+          is_read: false,
+        };
+
+        const { data: inserted } = await supabase
+          .from("notifications")
+          .insert([newWelcome])
+          .select();
+
+        if (inserted) {
+          data = inserted as DbNotification[];
+        }
+      }
+
       if (!cancelled) {
-        if (!error && data) {
+        if (data) {
           setNotifications(data as DbNotification[]);
         }
         setLoading(false);
@@ -59,7 +78,26 @@ export function useNotifications() {
   }, [profileId]);
 
   async function markAllRead() {
-    // Mantém limpo
+    const { data: { user } } = await supabase.auth.getUser();
+    let targetId = profileId;
+    if (!targetId && user) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      targetId = profile ? profile.id : user.id;
+    }
+
+    if (!targetId) return;
+
+    await supabase
+      .from("notifications")
+      .update({ is_read: true })
+      .eq("user_id", targetId)
+      .eq("is_read", false);
+
+    setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
   }
 
   return {
