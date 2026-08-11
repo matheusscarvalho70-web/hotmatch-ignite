@@ -1,12 +1,12 @@
 import { Link } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { LayoutGrid, MessageCircle, Store, User } from "lucide-react";
-import { HotMark } from "@/components/hotmatch/HotMark";
+import { HotMatch } from "@/components/hotmatch";
 import { useAppState } from "@/lib/hotmatch/store";
 import { supabase } from "@/lib/supabase";
 
 const items = [
-  { to: "/", label: "Descobrir", icon: (props: { className?: string }) => <HotMark {...props} /> },
+  { to: "/", label: "Descobrir", icon: (props: { className?: string }) => <HotMatch {...props} /> },
   { to: "/feed", label: "Feed", icon: LayoutGrid },
   { to: "/mensagens", label: "Mensagens", icon: MessageCircle },
   { to: "/loja", label: "Loja", icon: Store },
@@ -30,6 +30,7 @@ export function BottomNav() {
           .eq("receiver_id", profileId)
           .eq("is_read", false);
 
+        // Corrigido para garantir que verifica a ausência de erro e a existência de dados
         if (!error && data) {
           const uniqueUsers = new Set(data.map((msg) => msg.sender_id)).size;
           setUnreadUsersCount(uniqueUsers);
@@ -46,7 +47,7 @@ export function BottomNav() {
       .on(
         "postgres_changes",
         {
-          event: "*",
+          event: "INSERT",
           schema: "public",
           table: "chat_messages",
           filter: `receiver_id=eq.${profileId}`,
@@ -63,8 +64,8 @@ export function BottomNav() {
   }, [profileId, setUnreadUsersCount]);
 
   return (
-    <nav className="pointer-events-none fixed inset-x-0 bottom-0 z-50 flex justify-center pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">
-      <div className="glass-panel pointer-events-auto flex w-[min(26rem,calc(100%-1.5rem))] items-center justify-between rounded-3xl px-2 py-2 shadow-card-premium">
+    <nav className="pointer-events-none fixed inset-x-0 bottom-0 z-50 flex justify-center pb-[calc(env(safe-area-inset-bottom)+0.5rem)] px-4">
+      <div className="glass-panel pointer-events-auto flex w-[min(26rem,calc(100%-1.5rem))] items-center justify-between rounded-full px-2 py-1.5 shadow-lg backdrop-blur-md">
         {items.map(({ to, label, icon: Icon }) => {
           const isMessages = to === "/mensagens";
 
@@ -73,25 +74,19 @@ export function BottomNav() {
               key={to}
               to={to}
               activeOptions={{ exact: to === "/" }}
-              className="group tap-scale relative flex min-w-0 flex-1 flex-col items-center gap-1 rounded-2xl px-1 py-2 text-muted-foreground data-[status=active]:text-foreground"
+              className="group tap-scale relative flex min-w-0 flex-1 flex-col items-center gap-1 rounded-2xl px-1 py-2 text-xs font-medium text-muted-foreground transition-colors hover:text-primary [&.active]:text-primary"
             >
-              <span className="absolute inset-x-3 top-0 h-0.5 rounded-full bg-gradient-hot opacity-0 transition-opacity group-data-[status=active]:opacity-100" />
-              
               <div className="relative flex items-center justify-center">
-                <Icon
-                  className="size-5 transition-transform group-data-[status=active]:scale-110 group-data-[status=active]:text-primary"
-                  strokeWidth={2}
-                />
+                <Icon className="h-5 w-5 transition-transform group-hover:scale-110" />
                 
-                {/* BOLINHA VERMELHA EXCLUSIVA NO ÍCONE DE MENSAGENS */}
+                {/* Bolinha vermelha com a contagem em qualquer tela */}
                 {isMessages && unreadUsersCount > 0 && (
-                  <span className="absolute -top-1 -right-3 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-primary-foreground ring-2 ring-background">
-                    {unreadUsersCount > 9 ? "9+" : unreadUsersCount}
+                  <span className="absolute -right-2 -top-1.5 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground shadow">
+                    {unreadUsersCount}
                   </span>
                 )}
               </div>
-
-              <span className="truncate text-[10px] font-medium tracking-tight">{label}</span>
+              <span className="truncate">{label}</span>
             </Link>
           );
         })}
