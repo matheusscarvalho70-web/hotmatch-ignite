@@ -23,7 +23,9 @@ function Messages() {
 
   const [mutualIds, setMutualIds] = useState<Set<string>>(new Set());
   const [matchLoading, setMatchLoading] = useState(true);
-  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+  
+  // Armazena quantas notificações não lidas existem no total ou por tipo
+  const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
     if (!profileId) { setMatchLoading(false); return; }
@@ -34,60 +36,46 @@ function Messages() {
     return () => { cancelled = true; };
   }, [profileId]);
 
-  // Buscar contagens de mensagens não lidas do Supabase
+  // Buscar notificações não lidas da tabela 'notifications' (que é onde o app realmente grava os avisos)
   useEffect(() => {
     if (!profileId) return;
 
-    async function fetchUnread() {
+    async function fetchUnreadNotifications() {
       try {
-        const { data, error } = await supabase
-          .from("chat_messages")
-          .select("sender_id")
-          .eq("receiver_id", profileId)
+        const { count, error } = await supabase
+          .from("notifications")
+          .select("*", { count: "exact", head: true })
+          .eq("user_id", profileId)
+          .eq("type", "message")
           .eq("is_read", false);
 
-        // CORREÇÃO: Verifica se NÃO há erro e se existem dados
-        if (!error && data) {
-          const counts: Record<string, number> = {};
-          data.forEach((msg: { sender_id: string }) => {
-            if (msg.sender_id) {
-              counts[msg.sender_id] = (counts[msg.sender_id] || 0) + 1;
-            }
-          });
-          setUnreadCounts(counts);
+        if (!error && count !== null) {
+          setUnreadCount(count);
         }
       } catch (err) {
-        console.warn("Erro ao buscar não lidas:", err);
+        console.warn("Erro ao buscar notificações:", err);
       }
     }
 
-    fetchUnread();
+    fetchUnreadNotifications();
 
-    const channel = supabase
-      .channel(`public:chat_messages:unread:${profileId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "chat_messages",
-          filter: `receiver_id=eq.${profileId}`,
-        },
-        (payload) => {
-          const newMsg = payload.new as { sender_id: string; is_read?: boolean };
-          if (newMsg && newMsg.sender_id && !newMsg.is_read) {
-            setUnreadCounts((prev) => ({
-              ...prev,
-              [newMsg.sender_id]: (prev[newMsg.sender_id] || 0) + 1,
-            }));
-          }
-        }
-      )
-      .subscribe();
+    // Opcional: Marcar como lidas ao entrar na tela de mensagens para a bolinha sumir
+    async function markAsRead() {
+      await supabase
+        .from("notifications")
+        .update({ is_read: true })
+        .eq("user_id", profileId)
+        .eq("type", "message")
+        .eq("is_read", false);
+    }
+    
+    // Executa a marcação como lida após 1 segundo na tela de mensagens
+    const timer = setTimeout(() => {
+      markAsRead();
+      setUnreadCount(0);
+    }, 1000);
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => clearTimeout(timer);
   }, [profileId]);
 
   const isLoading = loading || matchLoading;
@@ -119,7 +107,6 @@ function Messages() {
                 </div>
               ))
             : displayProfiles.map((p) => {
-                const unread = unreadCounts[p.id] || 0;
                 return (
                   <Link key={p.id} to="/mensagens/$chatId" params={{ chatId: p.id }}
                     className="tap-scale relative flex w-16 shrink-0 flex-col items-center gap-1.5">
@@ -127,11 +114,6 @@ function Messages() {
                       {p.avatar_url ? (
                         <img src={p.avatar_url} alt={p.name} width={200} height={200} loading="lazy" className="size-full rounded-full object-cover" />
                       ) : <div className="size-full rounded-full bg-surface-2" />}
-                      {unread > 0 && (
-                        <span className="absolute top-0 right-0 grid size-5 place-items-center rounded-full bg-primary text-[10px] font-extrabold text-primary-foreground ring-2 ring-background">
-                          {unread > 9 ? "9+" : unread}
-                        </span>
-                      )}
                     </span>
                     <span className="w-full truncate text-center text-[11px] font-medium text-muted-foreground">{p.name}</span>
                   </Link>
@@ -162,7 +144,6 @@ function Messages() {
                   <p className="max-w-xs text-xs text-muted-foreground">Dê match mútuo no feed para começar a conversar!</p>
                 </li>
               ) : displayProfiles.map((p) => {
-                const unread = unreadCounts[p.id] || 0;
                 return (
                   <li key={p.id}>
                     <Link to="/mensagens/$chatId" params={{ chatId: p.id }}
@@ -171,11 +152,6 @@ function Messages() {
                         {p.avatar_url ? (
                           <img src={p.avatar_url} alt={p.name} width={200} height={200} loading="lazy" className="size-14 rounded-full object-cover" />
                         ) : <div className="size-14 rounded-full bg-surface-2" />}
-                        {unread > 0 && (
-                          <span className="absolute -top-1 -right-1 grid size-5 place-items-center rounded-full bg-primary text-[10px] font-extrabold text-primary-foreground ring-2 ring-background">
-                            {unread > 9 ? "9+" : unread}
-                          </span>
-                        )}
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-1">
@@ -183,14 +159,9 @@ function Messages() {
                             <p className="truncate text-sm font-bold">{p.name}</p>
                             {p.is_verified && <Crown className="size-3.5 shrink-0 text-gold" fill="currentColor" />}
                           </div>
-                          {unread > 0 && (
-                            <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-bold text-primary shrink-0">
-                              {unread} nova{unread > 1 ? "s" : ""}
-                            </span>
-                          )}
                         </div>
-                        <p className={`mt-0.5 truncate text-sm ${unread > 0 ? "font-semibold text-foreground" : "text-muted-foreground"}`}>
-                          {unread > 0 ? "Nova mensagem recebida..." : `Conversar com ${p.name}`}
+                        <p className="mt-0.5 truncate text-sm text-muted-foreground">
+                          Conversar com {p.name}
                         </p>
                       </div>
                     </Link>
@@ -201,4 +172,4 @@ function Messages() {
       </section>
     </div>
   );
-}
+                  }
