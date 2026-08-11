@@ -206,7 +206,7 @@ function NotificationsDrawer({ onClose }: { onClose: () => void }) {
 
   const safeNotifs = Array.isArray(notifications) ? notifications : [];
   
-  // FILTRO RIGOROSO: Remove completamente qualquer notificação de mensagem do sininho
+  // Remove apenas mensagens de chat para não poluir o sininho
   const generalNotifs = safeNotifs.filter((n) => {
     const type = n.type?.toLowerCase();
     return type !== "message" && type !== "msg" && type !== "chat";
@@ -312,54 +312,13 @@ function NotificationsDrawer({ onClose }: { onClose: () => void }) {
   );
 }
 
-class NotifErrorBoundary extends Component<
-  { children: ReactNode; onClose: () => void },
-  { hasError: boolean }
-> {
-  constructor(props: { children: ReactNode; onClose: () => void }) {
-    super(props);
-    this.state = { hasError: false };
-  }
-  static getDerivedStateFromError() { return { hasError: true }; }
-  componentDidCatch(err: unknown) { console.warn("[NotifBoundary]", err); }
-  render() {
-    if (this.state.hasError) {
-      return (
-        <>
-          <div className="fixed inset-0 z-[55]" onClick={this.props.onClose} />
-          <div
-            className="fixed inset-x-0 top-0 z-[56] mx-auto max-w-[30rem] overflow-y-auto rounded-b-3xl border-b border-x border-border bg-background shadow-[0_8px_32px_rgba(0,0,0,0.45)]"
-            style={{ maxHeight: "80dvh", paddingTop: "calc(env(safe-area-inset-top) + 4rem)" }}
-          >
-            <div className="p-4 pb-6">
-              <div className="flex items-center justify-between">
-                <h3 className="text-base font-extrabold">Notificações</h3>
-                <button onClick={this.props.onClose} className="grid size-7 place-items-center rounded-full bg-surface-2">
-                  <X className="size-4 text-muted-foreground" />
-                </button>
-              </div>
-              <div className="flex flex-col items-center gap-3 py-12 text-center">
-                <span className="grid size-14 place-items-center rounded-full bg-surface-2">
-                  <Bell className="size-6 text-muted-foreground" />
-                </span>
-                <p className="text-sm font-semibold">Nenhuma notificação no momento</p>
-                <p className="text-xs text-muted-foreground">Volte mais tarde para ver suas atualizações.</p>
-              </div>
-            </div>
-          </div>
-        </>
-      );
-    }
-    return this.props.children;
-  }
-}
-
 export function NotificationBell() {
   const [open, setOpen] = useState(false);
   const { notifications, markAllRead } = useNotifications();
 
-  // FILTRA APENAS AS NÃO LIDAS QUE NÃO SEJAM MENSAGENS DE CHAT
   const safeNotifs = Array.isArray(notifications) ? notifications : [];
+  
+  // Conta apenas as não lidas para o indicador numérico do sininho
   const generalUnreadCount = safeNotifs.filter((n) => {
     const type = n.type?.toLowerCase();
     return !n.is_read && type !== "message" && type !== "msg" && type !== "chat";
@@ -384,9 +343,7 @@ export function NotificationBell() {
         )}
       </button>
       {open && (
-        <NotifErrorBoundary onClose={() => setOpen(false)}>
-          <NotificationsDrawer onClose={() => setOpen(false)} />
-        </NotifErrorBoundary>
+        <NotificationsDrawer onClose={() => setOpen(false)} />
       )}
     </>
   );
@@ -417,5 +374,4 @@ export function TopBar() {
       )}
     </header>
   );
-      }
-          
+}
