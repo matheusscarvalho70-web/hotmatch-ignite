@@ -1,6 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { MessageCircle } from "lucide-react";
 import { TopBar } from "@/components/hotmatch/TopBar";
 import { useProfiles } from "@/hooks/use-profiles";
 import { useAppState } from "@/lib/hotmatch/store";
@@ -13,29 +12,20 @@ export const Route = createFileRoute("/mensagens/")({
 function Messages() {
   const { profileId } = useAppState();
   const { profiles } = useProfiles();
-  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+  const [allMessages, setAllMessages] = useState<any[]>([]);
 
   useEffect(() => {
-    async function fetchAllUnread() {
-      // Busca todas as mensagens não lidas do banco globalmente para teste
-      const { data, error } = await supabase
+    async function checkAll() {
+      // Pega TODAS as mensagens da tabela sem filtro nenhum
+      const { data } = await supabase
         .from("chat_messages")
-        .select("sender_id, receiver_id, is_read")
-        .eq("is_read", false);
-
-      if (!error && data) {
-        const counts: Record<string, number> = {};
-        data.forEach((m: any) => {
-          const sender = String(m.sender_id || "").trim();
-          if (sender) {
-            counts[sender] = (counts[sender] || 0) + 1;
-          }
-        });
-        setUnreadCounts(counts);
+        .select("*");
+      
+      if (data) {
+        setAllMessages(data);
       }
     }
-
-    fetchAllUnread();
+    checkAll();
   }, []);
 
   const displayProfiles = profiles.filter(p => p.id !== profileId);
@@ -44,51 +34,33 @@ function Messages() {
     <div className="min-h-screen pb-32">
       <TopBar title="Mensagens" />
 
+      {/* CAIXA DE AUDITORIA NA TELA */}
+      <div className="m-4 p-4 rounded-xl bg-surface-2 text-xs text-foreground space-y-2">
+        <p className="font-bold text-primary">AUDITORIA DE MENSAGENS NO BANCO:</p>
+        <p>Total de mensagens na tabela: {allMessages.length}</p>
+        {allMessages.map((m, idx) => (
+          <div key={idx} className="border-t border-border pt-1">
+            <p>De: {m.sender_id?.slice(0, 6)}... | Para: {m.receiver_id?.slice(0, 6)}...</p>
+            <p>Texto: "{m.content}" | is_read: <span className="font-bold text-primary">{String(m.is_read)}</span></p>
+          </div>
+        ))}
+      </div>
+
       <section className="mt-6">
         <h2 className="px-4 text-xs font-bold uppercase tracking-widest text-muted-foreground">Conversas</h2>
         <ul className="mt-2 px-2">
-          {displayProfiles.map((p) => {
-            const profileKey = String(p.id || "").trim();
-            const unread = unreadCounts[profileKey] || 0;
-
-            return (
-              <li key={p.id}>
-                <Link to="/mensagens/$chatId" params={{ chatId: p.id }}
-                  className="flex items-center gap-3 rounded-2xl px-2 py-3 active:bg-surface">
-                  
-                  <div className="relative shrink-0">
-                    {p.avatar_url ? (
-                      <img src={p.avatar_url} alt={p.name} className="size-14 rounded-full object-cover" />
-                    ) : (
-                      <div className="size-14 rounded-full bg-surface-2" />
-                    )}
-                    
-                    {unread > 0 && (
-                      <span className="absolute -top-1 -right-1 grid size-5 place-items-center rounded-full bg-primary text-[10px] font-extrabold text-primary-foreground ring-2 ring-background shadow-md">
-                        {unread}
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-1">
-                      <p className="truncate text-sm font-bold">{p.name}</p>
-                      {unread > 0 && (
-                        <span className="rounded-full bg-primary/15 px-2.5 py-0.5 text-[10px] font-bold text-primary shrink-0">
-                          {unread} nova{unread > 1 ? "s" : ""}
-                        </span>
-                      )}
-                    </div>
-                    {unread > 0 ? (
-                      <p className="text-xs text-primary font-bold">Tem {unread} mensagem(ns) não lida(s)</p>
-                    ) : (
-                      <p className="text-xs text-muted-foreground">Nenhuma nova mensagem</p>
-                    )}
-                  </div>
-                </Link>
-              </li>
-            );
-          })}
+          {displayProfiles.map((p) => (
+            <li key={p.id}>
+              <Link to="/mensagens/$chatId" params={{ chatId: p.id }}
+                className="flex items-center gap-3 rounded-2xl px-2 py-3 active:bg-surface">
+                {p.avatar_url ? <img src={p.avatar_url} className="size-14 rounded-full object-cover" /> : <div className="size-14 rounded-full bg-surface-2" />}
+                <div>
+                  <p className="font-bold">{p.name}</p>
+                  <p className="text-xs text-muted-foreground">Toque para abrir chat</p>
+                </div>
+              </Link>
+            </li>
+          ))}
         </ul>
       </section>
     </div>
