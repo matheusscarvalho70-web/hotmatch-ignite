@@ -1,7 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { LayoutGrid, MessageCircle, Store, User, Flame } from "lucide-react";
 import { useAppState } from "@/lib/hotmatch/store";
-import { motion, AnimatePresence } from "framer-motion";
 
 const items = [
   { to: "/", label: "Descobrir", icon: Flame },
@@ -12,8 +11,6 @@ const items = [
 ] as const;
 
 export function BottomNav() {
-  // O uso do hook useAppState aqui garante que o componente 
-  // escute as mudanças de 'unreadUsersCount' automaticamente
   const { unreadUsersCount } = useAppState();
 
   return (
@@ -32,19 +29,11 @@ export function BottomNav() {
               <div className="relative flex items-center justify-center p-1">
                 <Icon className="h-6 w-6 transition-transform group-hover:scale-110" strokeWidth={2} />
                 
-                {/* Bolinha de notificação com Animação */}
-                <AnimatePresence>
-                  {isMessages && unreadUsersCount > 0 && (
-                    <motion.span
-                      initial={{ scale: 0, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      exit={{ scale: 0, opacity: 0 }}
-                      className="absolute -right-1 -top-1 flex h-4.5 min-w-[1rem] items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white shadow-md ring-2 ring-background"
-                    >
-                      {unreadUsersCount > 9 ? "9+" : unreadUsersCount}
-                    </motion.span>
-                  )}
-                </AnimatePresence>
+                {isMessages && unreadUsersCount > 0 && (
+                  <span className="absolute -right-1 -top-1 flex h-4.5 min-w-[1rem] items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white shadow-md ring-2 ring-background animate-pulse">
+                    {unreadUsersCount > 9 ? "9+" : unreadUsersCount}
+                  </span>
+                )}
               </div>
               <span className="truncate">{label}</span>
             </Link>
