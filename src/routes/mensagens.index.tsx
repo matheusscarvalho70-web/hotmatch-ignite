@@ -23,8 +23,6 @@ function Messages() {
 
   const [mutualIds, setMutualIds] = useState<Set<string>>(new Set());
   const [matchLoading, setMatchLoading] = useState(true);
-  
-  // Estado para armazenar as contagens separadas por cada ID de usuário remetente
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
 
   useEffect(() => {
@@ -36,7 +34,7 @@ function Messages() {
     return () => { cancelled = true; };
   }, [profileId]);
 
-  // Buscar mensagens não lidas e escutar em tempo real com alta velocidade
+  // Buscar e escutar em tempo real as mensagens não lidas separadas por cada remetente
   useEffect(() => {
     if (!profileId) return;
 
@@ -58,31 +56,25 @@ function Messages() {
           setUnreadCounts(counts);
         }
       } catch (err) {
-        console.warn("Erro ao buscar contagens por usuário:", err);
+        console.warn("Erro ao buscar contagens individuais:", err);
       }
     }
 
     fetchUnreadPerUser();
 
-    // Canal em tempo real para atualizar instantaneamente na mesma velocidade do menu inferior
+    // Canal em tempo real para atualizar instantaneamente as bolinhas na lista
     const channel = supabase
-      .channel(`public:chat_messages:ui_notifications:${profileId}`)
+      .channel(`public:chat_messages:index_unread:${profileId}`)
       .on(
         "postgres_changes",
         {
-          event: "INSERT",
+          event: "*",
           schema: "public",
           table: "chat_messages",
           filter: `receiver_id=eq.${profileId}`,
         },
-        (payload) => {
-          const newMsg = payload.new as { sender_id: string; is_read?: boolean };
-          if (newMsg && newMsg.sender_id) {
-            setUnreadCounts((prev) => ({
-              ...prev,
-              [newMsg.sender_id]: (prev[newMsg.sender_id] || 0) + 1,
-            }));
-          }
+        () => {
+          fetchUnreadPerUser();
         }
       )
       .subscribe();
@@ -131,7 +123,6 @@ function Messages() {
                         <img src={p.avatar_url} alt={p.name} width={200} height={200} loading="lazy" className="size-full rounded-full object-cover" />
                       ) : <div className="size-full rounded-full bg-surface-2" />}
                       
-                      {/* Badge numérico em cima da foto do match recente */}
                       {unread > 0 && (
                         <span className="absolute top-0 right-0 grid size-5 place-items-center rounded-full bg-primary text-[10px] font-extrabold text-primary-foreground ring-2 ring-background shadow-md">
                           {unread > 9 ? "9+" : unread}
@@ -145,7 +136,7 @@ function Messages() {
         </div>
       </section>
 
-      {/* Seção de Conversas com a bolinha na foto e o texto "X nova(s)" na direita */}
+      {/* Seção de Conversas com a bolinha na foto e o texto "1 nova" do lado direito */}
       <section className="mt-6">
         <h2 className="px-4 text-xs font-bold uppercase tracking-widest text-muted-foreground">Conversas</h2>
         <ul className="mt-2 px-2">
@@ -179,7 +170,6 @@ function Messages() {
                           <img src={p.avatar_url} alt={p.name} width={200} height={200} loading="lazy" className="size-14 rounded-full object-cover" />
                         ) : <div className="size-14 rounded-full bg-surface-2" />}
                         
-                        {/* Bolinha vermelha na foto da conversa */}
                         {unread > 0 && (
                           <span className="absolute -top-1 -right-1 grid size-5 place-items-center rounded-full bg-primary text-[10px] font-extrabold text-primary-foreground ring-2 ring-background shadow-md">
                             {unread > 9 ? "9+" : unread}
@@ -194,7 +184,6 @@ function Messages() {
                             {p.is_verified && <Crown className="size-3.5 shrink-0 text-gold" fill="currentColor" />}
                           </div>
                           
-                          {/* Etiqueta "1 nova" do lado direito exatamente como na imagem desejada */}
                           {unread > 0 && (
                             <span className="rounded-full bg-primary/15 px-2.5 py-0.5 text-[10px] font-bold text-primary shrink-0">
                               {unread} nova{unread > 1 ? "s" : ""}
@@ -202,7 +191,6 @@ function Messages() {
                           )}
                         </div>
 
-                        {/* Texto dinâmico: se tiver mensagem não lida, exibe "Nova mensagem recebida..." em destaque */}
                         <p className={`mt-0.5 truncate text-sm ${unread > 0 ? "font-semibold text-foreground" : "text-muted-foreground"}`}>
                           {unread > 0 ? "Nova mensagem recebida..." : `Conversar com ${p.name}`}
                         </p>
@@ -215,4 +203,4 @@ function Messages() {
       </section>
     </div>
   );
-    }
+                          }
