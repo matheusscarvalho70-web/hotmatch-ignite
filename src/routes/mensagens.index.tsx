@@ -34,7 +34,7 @@ function Messages() {
     return () => { cancelled = true; };
   }, [profileId]);
 
-  // Buscar e escutar em tempo real as mensagens não lidas separadas por cada remetente
+  // Buscar e escutar em tempo real as mensagens não lidas com tratamento blindado de ID
   useEffect(() => {
     if (!profileId) return;
 
@@ -42,15 +42,16 @@ function Messages() {
       try {
         const { data, error } = await supabase
           .from("chat_messages")
-          .select("sender_id")
+          .select("sender_id, receiver_id, is_read")
           .eq("receiver_id", profileId)
           .eq("is_read", false);
 
         if (!error && data) {
           const counts: Record<string, number> = {};
-          data.forEach((msg: { sender_id: string }) => {
-            if (msg.sender_id) {
-              counts[msg.sender_id] = (counts[msg.sender_id] || 0) + 1;
+          data.forEach((msg: any) => {
+            const senderKey = String(msg.sender_id || "").trim();
+            if (senderKey) {
+              counts[senderKey] = (counts[senderKey] || 0) + 1;
             }
           });
           setUnreadCounts(counts);
@@ -64,7 +65,7 @@ function Messages() {
 
     // Canal em tempo real para atualizar instantaneamente as bolinhas na lista
     const channel = supabase
-      .channel(`public:chat_messages:index_unread:${profileId}`)
+      .channel(`public:chat_messages:index_unread_fixed:${profileId}`)
       .on(
         "postgres_changes",
         {
@@ -114,7 +115,8 @@ function Messages() {
                 </div>
               ))
             : displayProfiles.map((p) => {
-                const unread = unreadCounts[p.id] || 0;
+                const profileKey = String(p.id || "").trim();
+                const unread = unreadCounts[profileKey] || 0;
                 return (
                   <Link key={p.id} to="/mensagens/$chatId" params={{ chatId: p.id }}
                     className="tap-scale relative flex w-16 shrink-0 flex-col items-center gap-1.5">
@@ -136,7 +138,7 @@ function Messages() {
         </div>
       </section>
 
-      {/* Seção de Conversas com a bolinha na foto e o texto "1 nova" do lado direito */}
+      {/* Seção de Conversas com a bolinha na foto e o texto de novas mensagens */}
       <section className="mt-6">
         <h2 className="px-4 text-xs font-bold uppercase tracking-widest text-muted-foreground">Conversas</h2>
         <ul className="mt-2 px-2">
@@ -159,7 +161,8 @@ function Messages() {
                   <p className="max-w-xs text-xs text-muted-foreground">Dê match mútuo no feed para começar a conversar!</p>
                 </li>
               ) : displayProfiles.map((p) => {
-                const unread = unreadCounts[p.id] || 0;
+                const profileKey = String(p.id || "").trim();
+                const unread = unreadCounts[profileKey] || 0;
                 return (
                   <li key={p.id}>
                     <Link to="/mensagens/$chatId" params={{ chatId: p.id }}
@@ -203,4 +206,4 @@ function Messages() {
       </section>
     </div>
   );
-                          }
+}
