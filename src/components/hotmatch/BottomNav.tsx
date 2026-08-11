@@ -21,7 +21,7 @@ export function BottomNav() {
       return;
     }
 
-    const fetchUnreadUsers = async () => {
+    const fetchUnreadCount = async () => {
       try {
         const { data, error } = await supabase
           .from("chat_messages")
@@ -30,15 +30,15 @@ export function BottomNav() {
           .eq("is_read", false);
 
         if (!error && data) {
-          const uniqueUsers = new Set(data.map((msg) => msg.sender_id)).size;
-          setUnreadUsersCount(uniqueUsers);
+          const uniqueSenders = new Set(data.map((msg: { sender_id: string }) => msg.sender_id)).size;
+          setUnreadUsersCount(uniqueSenders);
         }
       } catch (err) {
-        console.warn("Erro ao buscar usuários não lidos:", err);
+        console.warn("Erro ao buscar contagem global de não lidas:", err);
       }
     };
 
-    fetchUnreadUsers();
+    fetchUnreadCount();
 
     const channel = supabase
       .channel(`global:bottom_nav:unread:${profileId}`)
@@ -51,7 +51,7 @@ export function BottomNav() {
           filter: `receiver_id=eq.${profileId}`,
         },
         () => {
-          fetchUnreadUsers();
+          fetchUnreadCount();
         }
       )
       .subscribe();
@@ -79,7 +79,7 @@ export function BottomNav() {
                 
                 {isMessages && unreadUsersCount > 0 && (
                   <span className="absolute -right-2 -top-1.5 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground shadow">
-                    {unreadUsersCount}
+                    {unreadUsersCount > 9 ? "9+" : unreadUsersCount}
                   </span>
                 )}
               </div>
