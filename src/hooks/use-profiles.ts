@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase, type DbProfile, type DbUserPhoto } from "@/lib/supabase";
 import { actions, useAppState } from "@/lib/hotmatch/store";
-import { loginOneSignal } from "@/lib/hotmatch/onesignal";
 
 /** Haversine great-circle distance in km between two lat/lng points. */
 export function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -176,7 +175,6 @@ async function hydrateFromDb(userId: string) {
     level: data.level ?? "bronze",
     vip: data.is_verified ?? false,
   });
-  // Hydrate gallery unlocks from DB (fire-and-forget)
   supabase
     .from("vip_gallery_unlocks")
     .select("creator_id")
@@ -193,31 +191,23 @@ async function hydrateFromDb(userId: string) {
  */
 export function useSessionBootstrap() {
   useEffect(() => {
-    // 1. Sync store with the current auth session on mount
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         hydrateFromDb(session.user.id);
-        // Associate Supabase user ID with OneSignal for targeted push delivery
-        loginOneSignal(session.user.id);
       }
     });
 
-    // 2. React to future auth state changes
-    // IMPORTANT: async work is wrapped in an IIFE to avoid the onAuthStateChange deadlock
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       (async () => {
         if (event === "SIGNED_OUT") {
           actions.signOut();
         } else if (event === "SIGNED_IN" && session?.user) {
           await hydrateFromDb(session.user.id);
-          // Associate Supabase user ID with OneSignal for targeted push delivery
-          loginOneSignal(session.user.id);
         }
       })();
     });
 
     return () => subscription.unsubscribe();
-  // Run once on mount only
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 }
@@ -253,4 +243,5 @@ export function useProfileStats(profileId: string | null) {
   }, [profileId]);
 
   return { stats, loading };
-}
+                 }
+    
