@@ -1,21 +1,14 @@
-import { createRouter } from "@tanstack/react-router";
-import { routeTree } from "./routeTree.gen";
-import { QueryClient } from "@tanstack/react-query";
+import { createRouter as RGR } from '@tanstack/react-router'
+import { routeTree } from './routeTree.gen'
 
 export function getRouter() {
-  const queryClient = new QueryClient();
-
-  const router = createRouter({
+  const router = RGR({
     routeTree,
-    context: { queryClient },
-    defaultPreload: "intent",
-  });
+    // suas outras configurações (como scrollRestoration, etc.)
+  })
 
-  return router;
+  return router
 }
 
-declare module "@tanstack/react-router" {
-  interface Register {
-    router: ReturnType<typeof getRouter>;
-  }
-}
+// Se necessário para o tipo do router
+export type RegisterRouter = ReturnType<typeof getRouter>
