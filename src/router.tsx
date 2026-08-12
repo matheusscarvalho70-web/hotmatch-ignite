@@ -1,22 +1,18 @@
-import { QueryClient } from "@tanstack/react-query";
-import { createRouter } from "@tanstack/react-router";
-import { routeTree } from "./routeTree.gen";
+import { createRootRouteWithContext, Outlet } from "@tanstack/react-router";
+import type { QueryClient } from "@tanstack/react-query";
 
-export const getRouter = () => {
-  const queryClient = new QueryClient();
+interface RouterContext {
+  queryClient: QueryClient;
+}
 
-  const router = createRouter({
-    routeTree,
-    context: { queryClient },
-    scrollRestoration: true,
-    defaultPreloadStaleTime: 0,
-  });
+export const Route = createRootRouteWithContext<RouterContext>()({
+  component: RootComponent,
+});
 
-  return router;
-};
-
-declare module "@tanstack/react-router" {
-  interface Register {
-    router: ReturnType<typeof getRouter>;
-  }
+function RootComponent() {
+  return (
+    <>
+      <Outlet />
+    </>
+  );
 }
