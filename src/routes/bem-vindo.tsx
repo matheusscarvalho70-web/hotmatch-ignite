@@ -432,9 +432,7 @@ function SignupFlow({ open, onOpenChange, gender }: {
       });
 
       if (authError) {
-        console.error("Erro detalhado Supabase (auth):", serializeError(authError));
-        const msg = errMessage(authError);
-        toast.error(msg);
+        toast.error(errMessage(authError));
         setSaving(false);
         return;
       }
@@ -495,8 +493,7 @@ function SignupFlow({ open, onOpenChange, gender }: {
         .single();
 
       if (profileError || !profile) {
-        const msg = errMessage(profileError) || "Erro desconhecido ao salvar perfil no banco.";
-        toast.error(msg);
+        toast.error(errMessage(profileError) || "Erro ao salvar perfil.");
         await supabase.auth.signOut();
         setSaving(false);
         return;
@@ -533,11 +530,10 @@ function SignupFlow({ open, onOpenChange, gender }: {
       navigate({ to: "/" });
 
     } catch (err) {
-      const msg = errMessage(err);
-      toast.error("Erro no cadastro: " + msg);
+      toast.error("Erro no cadastro: " + errMessage(err));
       setSaving(false);
     }
-  };
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -562,4 +558,5 @@ function SignupFlow({ open, onOpenChange, gender }: {
             <PasswordField label="Senha" value={password} onChange={setPassword} show={showPw} onToggle={() => setShowPw(!showPw)} />
             <div>
               <Label className="text-xs text-muted-foreground">Data de Nascimento</Label>
-              <Input type="date"
+              <Input type="date" value={dob} onChange={(e) => setDob(e.target.value)} className="mt-1 h-11 rounded-2xl bg-surface-2" />
+              {ageError && <p className="mt-1 text-xs text-destructive">{ageE
