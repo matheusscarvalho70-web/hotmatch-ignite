@@ -1,24 +1,22 @@
 import { createRootRoute, Outlet } from "@tanstack/react-router";
 import { Toaster } from "@/components/ui/sonner";
-import React from "react";
 
 export const Route = createRootRoute({
   component: RootComponent,
-  errorComponent: ({ error }) => {
-    return (
-      <div style={{ padding: 20, fontFamily: "sans-serif", color: "red" }}>
-        <h2>Ops! Ocorreu um erro ao carregar o app:</h2>
-        <pre>{error.message}</pre>
-      </div>
-    );
-  },
 });
 
 function RootComponent() {
   return (
-    <>
-      <Outlet />
-      <Toaster position="top-center" richColors />
-    </>
+    <html>
+      <head>
+        <meta charSet="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>HotMatch</title>
+      </head>
+      <body>
+        <Outlet />
+        <Toaster position="top-center" richColors />
+      </body>
+    </html>
   );
 }
