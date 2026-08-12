@@ -91,40 +91,13 @@ function ChatRoute() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // FUNÇÃO DE ENVIO APRIMORADA COM DISPARO DO ONESIGNAL
+  // FUNÇÃO DE ENVIO LIMPA (O push agora é disparado automaticamente pela Trigger do Supabase)
   const handleSend = async () => {
     if (!inputText.trim()) return;
     
     const textoMensagem = inputText;
     sendMessage(textoMensagem, "text");
     setInputText("");
-
-    try {
-      // Busca o player_id do destinatário para enviar a notificação push
-      const { data: partnerProfile } = await supabase
-        .from("profiles")
-        .select("onesignal_player_id")
-        .eq("id", partnerId)
-        .single();
-
-      if (partnerProfile?.onesignal_player_id) {
-        await fetch("https://onesignal.com/api/v1/notifications", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": "Basic duyebtwqyudvve4ds6gw4lhin",
-          },
-          body: JSON.stringify({
-            app_id: "f44f0fc5-bd84-4d56-a7e8-38b7d9cf1b68",
-            include_subscription_ids: [partnerProfile.onesignal_player_id],
-            contents: { pt: textoMensagem },
-            headings: { pt: "Nova Mensagem" },
-          }),
-        });
-      }
-    } catch (err) {
-      console.error("Erro ao enviar push notification:", err);
-    }
   };
 
   const handleSendGift = (gift: (typeof gifts)[0]) => {
@@ -411,5 +384,5 @@ function MessageBubble({ msg, onImageClick }: { msg: any; onImageClick?: (url: s
       </div>
     </div>
   );
-  }
-                                               
+        }
+        
