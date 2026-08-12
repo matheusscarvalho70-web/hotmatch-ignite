@@ -1,10 +1,11 @@
 import { createStart, createCsrfMiddleware, createMiddleware } from "@tanstack/react-start";
+import { defaultStreamHandler } from "@tanstack/react-start/server";
 
 const errorMiddleware = createMiddleware().server(async ({ next }) => {
   try {
     return await next();
   } catch (error) {
-    console.error(error);
+    console.error("Erro no servidor:", error);
     throw error;
   }
 });
@@ -15,4 +16,5 @@ const csrfMiddleware = createCsrfMiddleware({
 
 export const startInstance = createStart({
   requestMiddleware: [errorMiddleware, csrfMiddleware],
+  handler: defaultStreamHandler,
 });
