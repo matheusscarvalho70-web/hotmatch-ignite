@@ -16,9 +16,6 @@ interface OneSignalPageSDK {
     notifyButton?: { enable: boolean };
     [key: string]: unknown;
   }): Promise<void>;
-  /** Associate the current device/subscription with an external user identity.
-   *  Call immediately after successful Supabase Auth sign-in so push notifications
-   *  can be targeted by Supabase user ID on the OneSignal dashboard. */
   login(externalId: string): Promise<void>;
   logout(): Promise<void>;
   Notifications: {
@@ -29,14 +26,13 @@ interface OneSignalPageSDK {
     PushSubscription: {
       id: string | null | undefined;
       optedIn: boolean;
+      addEventListener(event: string, callback: (event: { current: { id?: string | null } }) => void): void;
     };
   };
 }
 
 /**
  * Associate the authenticated Supabase user ID with the OneSignal push subscription.
- * Call this immediately after every successful sign-in so the OneSignal dashboard can
- * target push notifications by Supabase user ID.
  */
 export function loginOneSignal(userId: string): void {
   if (typeof window === "undefined") return;
@@ -51,8 +47,11 @@ export function loginOneSignal(userId: string): void {
   });
 }
 
-/** Call once, early in the app lifecycle (e.g. in a root useEffect). */
-export function initOneSignal(): void {
+/** 
+ * Call once, early in the app lifecycle (e.g. in a root useEffect). 
+ * Automatically listens for subscription changes and updates the Supabase profile.
+ */
+export function initOneSignal(currentProfileId?: string): void {
   if (typeof window === "undefined") return;
   window.OneSignalDeferred = window.OneSignalDeferred || [];
   window.OneSignalDeferred.push(async (OneSignal) => {
@@ -61,13 +60,29 @@ export function initOneSignal(): void {
       allowLocalhostAsSecureOrigin: true,
       notifyButton: { enable: false },
     });
+
+    // Ouve alterações no token/ID do OneSignal e atualiza automaticamente no banco
+    OneSignal.User.PushSubscription.addEventListener("change", async (event) => {
+      const subId = event.current?.id;
+      if (subId && currentProfileId) {
+        const { error } = await supabase
+          .from("profiles")
+          .update({ onesignal_player_id: subId })
+          .eq("id", currentProfileId);
+          
+        if (error) {
+          console.warn("[OneSignal] Falha ao atualizar player ID no evento:", error.message);
+        } else {
+          console.log("[OneSignal] Player ID atualizado automaticamente:", subId);
+        }
+      }
+    });
   });
 }
 
 /**
  * Request push notification permission, then persist the subscription ID
- * to the user's profiles row. Safe to call multiple times — re-saves if the
- * ID changed.
+ * to the user's profiles row.
  */
 export async function registerPush(profileId: string): Promise<void> {
   if (typeof window === "undefined") return;
