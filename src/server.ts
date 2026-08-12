@@ -11,9 +11,15 @@ let serverEntryPromise: Promise<ServerEntry> | undefined;
 
 async function getServerEntry(): Promise<ServerEntry> {
   if (!serverEntryPromise) {
-    serverEntryPromise = import("@tanstack/react-start/server-entry").then(
-      (m) => (m.default ?? m) as ServerEntry,
-    );
+    serverEntryPromise = (async () => {
+      try {
+        const m = await import("@tanstack/react-start/server-entry");
+        return (m.default ?? m) as ServerEntry;
+      } catch {
+        const m = await import("@tanstack/react-start/server");
+        return (m.default ?? m) as ServerEntry;
+      }
+    })();
   }
   return serverEntryPromise;
 }
