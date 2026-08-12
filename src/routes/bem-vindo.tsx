@@ -423,7 +423,6 @@ function SignupFlow({ open, onOpenChange, gender }: {
     setSaving(true);
 
     try {
-      /* 1 — Create auth user */
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: email.trim().toLowerCase(),
         password,
@@ -435,7 +434,6 @@ function SignupFlow({ open, onOpenChange, gender }: {
       if (authError) {
         console.error("Erro detalhado Supabase (auth):", serializeError(authError));
         const msg = errMessage(authError);
-        alert("Erro no cadastro: " + msg + "\n\n[Detalhe] " + serializeError(authError));
         toast.error(msg);
         setSaving(false);
         return;
@@ -443,13 +441,10 @@ function SignupFlow({ open, onOpenChange, gender }: {
 
       const userId = authData?.user?.id;
       if (!userId) {
-        console.error("Erro detalhado Supabase: signUp retornou sem user id", serializeError(authData));
-        alert("Erro crítico: ID do usuário não retornado pelo Supabase.\n\n[Detalhe] " + serializeError(authData));
         setSaving(false);
         return;
       }
 
-      /* 2 — Upload avatar */
       let avatarUrl: string | null = null;
       if (avatarFile) {
         const ext = avatarFile.name.split(".").pop() ?? "jpg";
@@ -457,15 +452,12 @@ function SignupFlow({ open, onOpenChange, gender }: {
         const { data: sd, error: avatarErr } = await supabase.storage
           .from("photos")
           .upload(path, avatarFile, { upsert: true, contentType: avatarFile.type });
-        if (avatarErr) {
-          console.warn("[Signup] Avatar upload failed:", serializeError(avatarErr));
-        } else if (sd) {
+        if (!avatarErr && sd) {
           const { data: { publicUrl } } = supabase.storage.from("photos").getPublicUrl(sd.path);
           avatarUrl = publicUrl;
         }
       }
 
-      /* 3 — Upload biometric selfie (failure is non-fatal) */
       let verificationPhotoUrl: string | null = null;
       if (capturedBlob) {
         try {
@@ -473,9 +465,7 @@ function SignupFlow({ open, onOpenChange, gender }: {
           const { data: vd, error: verErr } = await supabase.storage
             .from("photos")
             .upload(path, capturedBlob, { upsert: true, contentType: "image/jpeg" });
-          if (verErr) {
-            console.warn("[Signup] Biometric selfie upload failed:", serializeError(verErr));
-          } else if (vd) {
+          if (!verErr && vd) {
             const { data: { publicUrl } } = supabase.storage.from("photos").getPublicUrl(vd.path);
             verificationPhotoUrl = publicUrl;
           }
@@ -484,7 +474,6 @@ function SignupFlow({ open, onOpenChange, gender }: {
         }
       }
 
-      /* 4 — Insert profile linked to auth user */
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
         .insert({
@@ -506,16 +495,13 @@ function SignupFlow({ open, onOpenChange, gender }: {
         .single();
 
       if (profileError || !profile) {
-        console.error("Erro detalhado Supabase (profile):", serializeError(profileError));
         const msg = errMessage(profileError) || "Erro desconhecido ao salvar perfil no banco.";
-        alert("Erro no cadastro: " + msg + "\n\n[Detalhe] " + serializeError(profileError));
         toast.error(msg);
         await supabase.auth.signOut();
         setSaving(false);
         return;
       }
 
-      /* 5 — Hydrate store */
       actions.setProfile({
         profileId: profile.id,
         gender,
@@ -528,7 +514,6 @@ function SignupFlow({ open, onOpenChange, gender }: {
         vip: false,
       });
 
-      /* 6 — Insert welcome notification */
       supabase
         .from("notifications")
         .insert({
@@ -540,9 +525,7 @@ function SignupFlow({ open, onOpenChange, gender }: {
             : "Explore o feed e converse com pessoas incríveis.",
           is_read: false,
         })
-        .then(({ error: nErr }) => {
-          if (nErr) console.warn("[HotMatch] Notification insert failed:", serializeError(nErr));
-        });
+        .then(() => {});
 
       setSaving(false);
       onOpenChange(false);
@@ -550,9 +533,8 @@ function SignupFlow({ open, onOpenChange, gender }: {
       navigate({ to: "/" });
 
     } catch (err) {
-      console.error("Erro detalhado Supabase:", serializeError(err));
       const msg = errMessage(err);
-      alert("Erro no cadastro: " + msg);
+      toast.error("Erro no cadastro: " + msg);
       setSaving(false);
     }
   };
@@ -560,4 +542,24 @@ function SignupFlow({ open, onOpenChange, gender }: {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto rounded-3xl border-border bg-surface p-5 sm:max-w-[26rem]">
-        <DialogTitle className="sr-only">Cadastro no Ho
+        <DialogTitle className="sr-only">Cadastro no HotMatch</DialogTitle>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <HotMark className="size-6" />
+            <span className="text-base font-extrabold tracking-tight">
+              Criar Conta · <span className="text-gradient-gold">{isCreator ? "Criadora VIP" : "Membro"}</span>
+            </span>
+          </div>
+          <span className="text-xs font-semibold text-muted-foreground">
+            Passo {step} de {STEPS}
+          </span>
+        </div>
+
+        {step === 1 && (
+          <div className="mt-4 space-y-3">
+            <Field label="Seu Nome" placeholder="Como quer ser chamado(a)" value={name} onChange={(e) => setName(e.target.value)} />
+            <Field label="E-mail" type="email" placeholder="seu@email.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+            <PasswordField label="Senha" value={password} onChange={setPassword} show={showPw} onToggle={() => setShowPw(!showPw)} />
+            <div>
+              <Label className="text-xs text-muted-foreground">Data de Nascimento</Label>
+              <Input type="date"
