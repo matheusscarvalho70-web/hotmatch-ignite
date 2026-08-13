@@ -121,5 +121,5 @@ function SimpleSignup({ open, onOpenChange, gender }: { open: boolean; onOpenCha
         </form>
       </DialogContent>
     </Dialog>
-  );
+  ); 
 }
