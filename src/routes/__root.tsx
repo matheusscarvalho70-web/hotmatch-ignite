@@ -11,6 +11,13 @@ export const Route = createRootRoute({
     ],
   }),
   component: RootComponent,
+  notFoundComponent: () => <div>Página não encontrada</div>,
+  errorComponent: ({ error }) => (
+    <div style={{ padding: '20px', color: 'red', fontFamily: 'sans-serif' }}>
+      <h2>Ocorreu um erro na aplicação:</h2>
+      <pre>{error.message}</pre>
+    </div>
+  ),
 });
 
 function RootComponent() {
