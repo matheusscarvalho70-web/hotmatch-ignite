@@ -182,7 +182,6 @@ function LoginDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: 
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const submit = async (e: React.FormEvent) => {
@@ -279,7 +278,6 @@ function SignupFlow({ open, onOpenChange, gender }: {
   open: boolean; onOpenChange: (v: boolean) => void; gender: Gender;
 }) {
   const navigate = useNavigate();
-  const isCreator = gender === "female";
   const [step, setStep] = useState(1);
   const [saving, setSaving] = useState(false);
 
@@ -539,4 +537,6 @@ function SignupFlow({ open, onOpenChange, gender }: {
                   <Button onClick={startCamera} className="w-full rounded-full bg-gradient-hot font-bold">Abrir Câmera</Button>
                 </div>
               )}
-      
+              {camPhase === "active" && (
+                <div className="space-y-3">
+  
