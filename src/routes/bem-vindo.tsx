@@ -40,7 +40,6 @@ export const Route = createFileRoute("/bem-vindo")({
 
 type Gender = "male" | "female";
 
-/* ─── returns the REAL age — no clamping ─── */
 function calcAge(dob: string): number {
   const birth = new Date(dob);
   const today = new Date();
@@ -52,7 +51,6 @@ function calcAge(dob: string): number {
 
 function delay(ms: number) { return new Promise<void>((r) => setTimeout(r, ms)); }
 
-/* ────────────────────────── Page ────────────────────────── */
 function WelcomePage() {
   const [gender, setGender] = useState<Gender | null>(null);
   const [signupOpen, setSignupOpen] = useState(false);
@@ -147,7 +145,6 @@ function WelcomePage() {
   );
 }
 
-/* ────────────────────────── Choice card ────────────────────────── */
 function ChoiceCard({ onClick, icon, title, desc, chip, tone, genderIcon }: {
   onClick: () => void; icon: React.ReactNode; title: string; desc: string;
   chip: string; tone: "hot" | "gold"; genderIcon: React.ReactNode;
@@ -181,7 +178,6 @@ function ChoiceCard({ onClick, icon, title, desc, chip, tone, genderIcon }: {
   );
 }
 
-/* ────────────────────────── Login dialog ────────────────────────── */
 function LoginDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
@@ -253,20 +249,17 @@ function LoginDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: 
           </span>
         </div>
         <form onSubmit={submit} className="mt-4 space-y-3">
-          <Field
-            label="E-mail"
+          <Input
+            placeholder="E-mail"
             type="email"
-            autoComplete="email"
-            placeholder="seu@email.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
-          <PasswordField
-            label="Senha"
+          <Input
+            type="password"
+            placeholder="Senha"
             value={password}
-            onChange={setPassword}
-            show={showPw}
-            onToggle={() => setShowPw((v) => !v)}
+            onChange={(e) => setPassword(e.target.value)}
           />
           <Button
             type="submit"
@@ -282,38 +275,27 @@ function LoginDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: 
   );
 }
 
-/* ────────────────────────── Signup flow ────────────────────────── */
 function SignupFlow({ open, onOpenChange, gender }: {
   open: boolean; onOpenChange: (v: boolean) => void; gender: Gender;
 }) {
   const navigate = useNavigate();
   const isCreator = gender === "female";
-  const STEPS = 3;
-
   const [step, setStep] = useState(1);
   const [saving, setSaving] = useState(false);
 
-  /* Step 1 */
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [showPw, setShowPw] = useState(false);
   const [dob, setDob] = useState("");
   const [bio, setBio] = useState("");
 
-  /* computed age — updates every keystroke on dob */
   const computedAge = dob ? calcAge(dob) : null;
-  const ageError =
-    computedAge !== null && computedAge < 18
-      ? "Você precisa ter no mínimo 18 anos para se cadastrar."
-      : null;
+  const ageError = computedAge !== null && computedAge < 18 ? "Você precisa ter no mínimo 18 anos." : null;
 
-  /* Step 2 — avatar */
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
-  /* Step 3 — biometrics */
   const [camPhase, setCamPhase] = useState<"idle" | "active" | "scanning" | "done">("idle");
   const [scanMsg, setScanMsg] = useState("");
   const [scanPct, setScanPct] = useState(0);
@@ -323,7 +305,6 @@ function SignupFlow({ open, onOpenChange, gender }: {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
-  /* Reset everything when dialog closes */
   useEffect(() => {
     if (!open) {
       streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -336,8 +317,6 @@ function SignupFlow({ open, onOpenChange, gender }: {
     }
   }, [open]);
 
-  /* When camPhase transitions to "active" the <video> element mounts.
-     Attach the stream + play in this effect so the ref is non-null. */
   useEffect(() => {
     if (camPhase !== "active" || !streamRef.current) return;
     const el = videoRef.current;
@@ -346,17 +325,16 @@ function SignupFlow({ open, onOpenChange, gender }: {
     el.play().catch(() => {});
   }, [camPhase]);
 
-  /* Camera helpers */
   async function startCamera() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
-      audio: false,
+        audio: false,
       });
       streamRef.current = stream;
       setCamPhase("active");
     } catch {
-      toast.error("Câmera indisponível. Verifique as permissões do navegador.");
+      toast.error("Câmera indisponível.");
     }
   }
 
@@ -396,98 +374,53 @@ function SignupFlow({ open, onOpenChange, gender }: {
     }
     await delay(300);
     setCamPhase("done");
-    toast.success(isCreator ? "Selo de Criadora VIP validado!" : "Perfil verificado como real!");
-  }
-
-  /* Final account creation */
-  function extractErrorMessage(e: unknown): string {
-    if (!e) return "";
-    const obj = e as Record<string, unknown> & {
-      message?: string;
-      error_description?: string;
-      error?: { message?: string };
-    };
-    return (
-      obj?.message ||
-      obj?.error_description ||
-      obj?.error?.message ||
-      (typeof obj === "object" ? Object.values(obj as object).join(" ") : String(obj))
-    );
+    toast.success("Perfil verificado com sucesso!");
   }
 
   async function finish() {
-    /* Guard: local fields */
     if (!name.trim() || !email.trim() || !password || !dob) {
-      alert("Por favor, preencha todos os campos obrigatórios.");
+      toast.error("Por favor, preencha todos os campos obrigatórios.");
       return;
     }
 
     setSaving(true);
 
-    /* 1 — Create Supabase Auth user */
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email: email.trim().toLowerCase(),
       password,
-      options: {
-        data: { full_name: name.trim(), name: name.trim() },
-      },
+      options: { data: { full_name: name.trim(), name: name.trim() } },
     });
 
-    if (authError) {
-      console.dir(authError);
-      console.log(JSON.stringify(authError, Object.getOwnPropertyNames(authError)));
-      const msg = extractErrorMessage(authError);
-      alert("Erro no cadastro: " + (msg || "Verifique se o e-mail já não está cadastrado."));
-      toast.error(msg || "Erro ao criar conta.");
+    if (authError || !authData?.user) {
+      toast.error(authError?.message || "Erro ao criar conta.");
       setSaving(false);
       return;
     }
 
-    const userId = authData?.user?.id;
-    if (!userId) {
-      alert("Por favor, preencha todos os campos obrigatórios.");
-      setSaving(false);
-      return;
-    }
-
-    /* 2 — Upload avatar */
+    const userId = authData.user.id;
     let avatarUrl: string | null = null;
     if (avatarFile) {
       const ext = avatarFile.name.split(".").pop() ?? "jpg";
       const path = `avatars/${userId}_${Date.now()}.${ext}`;
-      const { data: sd } = await supabase.storage
-        .from("photos")
-        .upload(path, avatarFile, { upsert: true, contentType: avatarFile.type });
+      const { data: sd } = await supabase.storage.from("photos").upload(path, avatarFile, { upsert: true, contentType: avatarFile.type });
       if (sd) {
         const { data: { publicUrl } } = supabase.storage.from("photos").getPublicUrl(sd.path);
         avatarUrl = publicUrl;
       }
     }
 
-    /* 3 — Upload biometric selfie (failure is non-fatal — account still gets created) */
     let verificationPhotoUrl: string | null = null;
     if (capturedBlob) {
       try {
         const path = `verifications/${userId}_${Date.now()}_selfie.jpg`;
-        const { data: vd, error: verErr } = await supabase.storage
-          .from("photos")
-          .upload(path, capturedBlob, { upsert: true, contentType: "image/jpeg" });
-        if (verErr) {
-          console.warn(
-            "[Signup] Biometric selfie upload failed:",
-            verErr.message || JSON.stringify(verErr),
-          );
-        } else if (vd) {
+        const { data: vd } = await supabase.storage.from("photos").upload(path, capturedBlob, { upsert: true, contentType: "image/jpeg" });
+        if (vd) {
           const { data: { publicUrl } } = supabase.storage.from("photos").getPublicUrl(vd.path);
           verificationPhotoUrl = publicUrl;
         }
-      } catch (uploadErr) {
-        console.warn("[Signup] Biometric selfie upload exception:", uploadErr);
-        // verificationPhotoUrl remains null — account creation continues normally
-      }
+      } catch {}
     }
 
-    /* 4 — Insert profile linked to auth user */
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .insert({
@@ -509,17 +442,12 @@ function SignupFlow({ open, onOpenChange, gender }: {
       .single();
 
     if (profileError || !profile) {
-      console.dir(profileError);
-      console.log(JSON.stringify(profileError, Object.getOwnPropertyNames(profileError ?? {})));
-      const msg = extractErrorMessage(profileError) || "Erro ao salvar perfil. Tente novamente.";
-      alert("Erro no cadastro: " + msg);
-      toast.error(msg);
+      toast.error("Erro ao salvar perfil.");
       await supabase.auth.signOut();
       setSaving(false);
       return;
     }
 
-    /* 5 — Hydrate store */
     actions.setProfile({
       profileId: profile.id,
       gender,
@@ -533,28 +461,82 @@ function SignupFlow({ open, onOpenChange, gender }: {
     });
 
     registerPush(profile.id).catch(() => {});
-
-    supabase.from("notifications").insert({
-      user_id: profile.id,
-      type: "match",
-      title: "Bem-vindo ao HotMatch! 🔥",
-      content: isCreator
-        ? "Seu perfil está sendo verificado. Em breve você poderá sacar seus ganhos!"
-        : "Explore o feed e converse com pessoas incríveis.",
-      is_read: false,
-    }).then(({ error: nErr }) => {
-      if (nErr) console.warn("[HotMatch] Notification insert failed:", nErr);
-    });
-
     setSaving(false);
     onOpenChange(false);
     toast.success(`Bem-vindo ao HotMatch, ${profile.name}! 🔥`);
     navigate({ to: "/" });
   }
 
-  /* Step validation */
   const next = async () => {
     if (step === 1) {
-      if (!name.trim()) { toast.error("Informe seu nome ou apelido."); return; }
-      if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-        toast.error("Informe um
+      if (!name.trim()) { toast.error("Informe seu nome."); return; }
+      if (!email.trim()) { toast.error("Informe seu e-mail."); return; }
+      if (!password || password.length < 6) { toast.error("A senha precisa ter pelo menos 6 caracteres."); return; }
+      if (!dob) { toast.error("Informe sua data de nascimento."); return; }
+      if (ageError) { toast.error(ageError); return; }
+      setStep(2);
+    } else if (step === 2) {
+      setStep(3);
+    } else if (step === 3) {
+      finish();
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto rounded-3xl border-border bg-surface p-5 sm:max-w-[26rem]">
+        <DialogTitle className="text-lg font-extrabold">
+          {step === 1 && "Seus Dados Básicos"}
+          {step === 2 && "Sua Foto de Perfil"}
+          {step === 3 && "Verificação de Identidade"}
+        </DialogTitle>
+
+        <div className="mt-4 space-y-4">
+          {step === 1 && (
+            <>
+              <Input placeholder="Nome ou Apelido" value={name} onChange={(e) => setName(e.target.value)} />
+              <Input placeholder="E-mail" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+              <Input placeholder="Senha" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Data de Nascimento</Label>
+                <Input type="date" value={dob} onChange={(e) => setDob(e.target.value)} />
+                {ageError && <p className="text-xs text-destructive">{ageError}</p>}
+              </div>
+              <Input placeholder="Bio (opcional)" value={bio} onChange={(e) => setBio(e.target.value)} />
+            </>
+          )}
+
+          {step === 2 && (
+            <div className="text-center space-y-4">
+              <div className="mx-auto size-28 overflow-hidden rounded-full border-2 border-gold/40 bg-surface-2 grid place-items-center">
+                {avatarPreview ? (
+                  <img src={avatarPreview} alt="Preview" className="size-full object-cover" />
+                ) : (
+                  <User className="size-10 text-muted-foreground" />
+                )}
+              </div>
+              <input
+                type="file"
+                ref={avatarInputRef}
+                className="hidden"
+                accept="image/*"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) { setAvatarFile(f); setAvatarPreview(URL.createObjectURL(f)); }
+                }}
+              />
+              <Button variant="outline" onClick={() => avatarInputRef.current?.click()} className="rounded-full">
+                Escolher Foto da Galeria
+              </Button>
+            </div>
+          )}
+
+          {step === 3 && (
+            <div className="text-center space-y-4">
+              {camPhase === "idle" && (
+                <div className="space-y-3">
+                  <p className="text-xs text-muted-foreground">Precisamos de uma selfie rápida para garantir que você é uma pessoa real.</p>
+                  <Button onClick={startCamera} className="w-full rounded-full bg-gradient-hot font-bold">Abrir Câmera</Button>
+                </div>
+              )}
+      
